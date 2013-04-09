@@ -1,0 +1,30 @@
+#
+# qflow project included technology osu035 files
+#
+
+# Main compiler arguments
+CFLAGS = @CFLAGS@
+DEFS = @DEFS@
+LIBS = @LIBS@
+LDFLAGS = @LDFLAGS@
+INSTALL = @INSTALL@
+
+QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
+
+TECH_FILES = osu035.genlib osu035.par osu035_stdcells.lef osu035.sh gate.cfg
+
+TECHINSTALL = ${QFLOW_LIB_DIR}/tech
+
+all:
+
+install:
+	@echo "Installing osu035 tech files"
+	$(INSTALL) -d $(TECHINSTALL)/osu035
+	for target in $(TECH_FILES); do \
+	   $(INSTALL) $$target $(TECHINSTALL)/osu035 ;\
+	done
+
+clean:
+
+uninstall:
+

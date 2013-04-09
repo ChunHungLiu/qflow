@@ -1,0 +1,39 @@
+#
+# qflow project tech makefile
+#
+
+# Main compiler arguments
+CFLAGS = @CFLAGS@
+DEFS = @DEFS@
+LIBS = @LIBS@
+LDFLAGS = @LDFLAGS@
+INSTALL = @INSTALL@
+
+QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
+
+TECH_DIRS = osu035
+
+TECHINSTALL = ${QFLOW_LIB_DIR}/tech
+
+all:
+
+install:
+	@echo "Installing built-in tech files"
+	$(INSTALL) -d ${TECHINSTALL}
+	for target in $(TECH_DIRS); do \
+	   cd $$target ;\
+	   $(MAKE) install ;\
+	done
+
+clean:
+	@echo "Cleaning up built-in tech files"
+	for target in $(TECH_DIRS); do \
+	   cd $$target ;\
+	   $(MAKE) clean ;\
+	done
+
+
+uninstall:
+	@echo "Uninstalling built-in tech files
+	$(RM) -rf ${TECHINSTALL}
+
