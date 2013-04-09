@@ -69,6 +69,15 @@ touch ${synthlog}
 cd ${sourcedir}
 ${bindir}/vpreproc ${rootname}.v
 
+# Stuff ideosyncratic to VIS.  We will force syntax
+# that VIS can handle, and write it back to the same
+# filename as was created by vpreproc
+
+${scriptdir}/vispreproc.tcl ${rootname}_tmp.v
+if ( -f ${rootname}_tmp_vis.v ) then
+   mv ${rootname}_tmp_vis.v ${rootname}_tmp.v
+endif
+
 ${bindir}/vis >>& ${synthlog} << EOF
 read_verilog ${rootname}_tmp.v
 write_blif ${rootname}.blif

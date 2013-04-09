@@ -36,4 +36,5 @@ set andgate=AND2X1	;# 2-input AND gate, minimum drive strength
 
 set separator=X		;# Separator between gate names and drive strengths
 set techfile=SCN4M_SUBM.20	;# magic techfile
+set magicrc=osu035.magicrc	;# magic startup script
 set gdsfile=osu035_stdcells.gds	;# GDS database of standard cells

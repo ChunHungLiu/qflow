@@ -125,10 +125,13 @@ get_bitval(char *token)
 char *
 parse_bit(int line_num, module *topmod, char *vstr, int idx)
 {
-   int vsize, vval;
+   int vsize, vval, realsize;
    static char bitval[2] = "0";
-   char *bptr, typechar;
+   char *bptr, typechar, *vptr, *fullvec = NULL;
    vector *testvec;
+   int locidx;
+   
+   if (idx < 0) locidx = 0;
 
    if (vstr[0] == '{') {
       /* To-do:  Deal with vectors constructed from sub-vectors */
@@ -136,30 +139,56 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
    else {
       if (sscanf(vstr, "%d'%c", &vsize, &typechar) == 2) {
 	 bptr = strchr(vstr, typechar);
-	 if (vsize > idx) {
+	 vptr = bptr + 1;
+	 while (isalnum(*vptr)) vptr++;
+
+	 // Handle the case where the bit vector needs zero padding, e.g.,
+	 // "9'b0".  For decimal, octal, hex we pad more than necessary,
+	 // but who cares?
+
+	 realsize = vptr - bptr - 1;
+	 if (realsize < vsize) {
+	    fullvec = (char *)malloc((vsize + 1) * sizeof(char));
+	    for (vptr = fullvec; vptr < fullvec + vsize; vptr++) *vptr = '0';
+	    *vptr = '\0';
+	    vptr = bptr + 1;
+	    while (*vptr != '\0') {
+	       *(fullvec + vsize - realsize) = *vptr;
+	       vptr++;
+	       realsize--;
+	    }
+	    vptr = fullvec + vsize - 1;		// Put vptr on lsb
+	 }
+	 else
+	    vptr--;	// Put vptr on lsb
+
+	 if (vsize > locidx) {
 	    switch (typechar) {
 	       case 'b':
-		  *bitval = *(bptr + vsize - idx);
+		  *bitval = *(vptr - locidx);
 	 	  bptr = bitval;
+		  if (fullvec) free(fullvec);
 	 	  return bptr;
 	       case 'd':		// Interpret decimal
 		  vstr = bptr + 1;	// Move to start of decimal value and continue
 		  break;	  
 	       case 'h':		// To-do:  Interpret hex
-		  *bitval = *(bptr + vsize - (idx / 4));
+		  *bitval = *(vptr - (locidx / 4));
 		  sscanf(bitval, "%x", &vval);
-		  vval >>= (idx % 4);
+		  vval >>= (locidx % 4);
 		  vval &= 0x1;
 	 	  bptr = bitval;
 		  *bptr = (vval == 0) ? '0' : '1';
+		  if (fullvec) free(fullvec);
 	 	  return bptr;
 	       case 'o':		// To-do:  Interpret octal
-		  *bitval = *(bptr + vsize - (idx / 3));
+		  *bitval = *(vptr - (locidx / 3));
 		  sscanf(bitval, "%o", &vval);
-		  vval >>= (idx % 3);
+		  vval >>= (locidx % 3);
 		  vval &= 0x1;
 	 	  bptr = bitval;
 		  *bptr = (vval == 0) ? '0' : '1';
+		  if (fullvec) free(fullvec);
 	 	  return bptr;
 	    }
 	 }
@@ -169,7 +198,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	 }
       }
       if (sscanf(vstr, "%d", &vval) == 1) {
-	 vval >>= idx;
+	 vval >>= locidx;
 	 vval &= 0x1;
 	 bptr = bitval;
 	 *bptr = (vval == 0) ? '0' : '1';

@@ -49,6 +49,16 @@ cd ${projectpath}
 # Cleanup verilog parsing files.  Leave the original source!
 #----------------------------------------------------------
 
+# Check if rootname needs a "_buf" suffix
+
+cd ${layoutdir}
+
+if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
+   set origname=${rootname}
+   set rootname=${rootname}_buf
+endif
+
+
 cd ${sourcedir}
 
 rm -f ${origname}.blif
@@ -73,13 +83,6 @@ rm -f ${rootname}_orig.bdnet
 
 cd ${layoutdir}
 
-# Check if rootname needs a "_buf" suffix
-
-if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
-   set origname=${rootname}
-   set rootname=${rootname}_buf
-endif
-
 rm -f ${rootname}.blk ${rootname}.gen ${rootname}.gsav ${rootname}.history
 rm -f ${rootname}.log ${rootname}.mcel ${rootname}.mdat ${rootname}.mgeo
 rm -f ${rootname}.mout ${rootname}.mpin ${rootname}.mpth ${rootname}.msav
@@ -91,6 +94,10 @@ rm -f ${rootname}.pin ${rootname}.pl1 ${rootname}.pl2
 rm -f ${rootname}.cfg
 
 rm -f ${origname}_unrouted.def
+mv -f ${rootname}.def ${origname}_unrouted.def
+
+rm -f cn
+rm -f failed
 
 #------------------------------------------------------------
 # Done!

@@ -46,6 +46,18 @@ source ${projectpath}/qflow_vars.sh
 cd ${projectpath}
 
 #----------------------------------------------------------
+# Copy the .magicrc file from the tech directory to the
+# layout directory, if it does not have one.  This file
+# automatically loads the correct technology file.
+#----------------------------------------------------------
+
+if (! -f ${layoutdir}/.magicrc ) then
+   if ( -f ${techdir}/${magicrc} ) then
+      cp ${techdir}/${magicrc} ${layoutdir}/.magicrc
+   endif
+endif
+
+#----------------------------------------------------------
 # Done with initialization
 #----------------------------------------------------------
 
@@ -58,9 +70,9 @@ cd ${layoutdir}
 #---------------------------------------------------
 
 if ($techleffile == "") then
-   set lefcmd="lef read ${leffile}"
+   set lefcmd="lef read ${techdir}/${leffile}"
 else
-   set lefcmd="lef read ${techleffile}\nlef read ${techleffile}"
+   set lefcmd="lef read ${techdir}/${techleffile}\nlef read ${techdir}/${techleffile}"
 endif
 
 /usr/local/bin/magic -dnull -noconsole <<EOF
