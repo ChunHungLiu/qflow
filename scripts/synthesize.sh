@@ -3,9 +3,9 @@
 # synthesize.sh:
 #-------------------------------------------------------------------------
 #
-# This script synthesizes verilog files.
-# This script should be sourced after sourcing "checkdirs.sh" to set
-# all of the correct paths to the project and technology files.
+# This script synthesizes verilog files for qflow using VIS and SIS,
+# and various preprocessors to handle verilog syntax that is beyond
+# the capabilities of the simple VIS/SIS synthesis to handle.
 #
 #-------------------------------------------------------------------------
 # November 2006
