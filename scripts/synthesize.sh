@@ -192,7 +192,7 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
       mv ${rootname}_buf.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -o 25 \
+      ${bindir}/BDnetFanout -l 75 -c 25 \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}_buf.bdnet >>& ${synthlog}
