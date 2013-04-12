@@ -126,6 +126,9 @@ endif
 if ($makedef == 1) then
    if ( -f ${scriptdir}/addspacers.tcl ) then
       ${scriptdir}/addspacers.tcl ${rootname} ${techdir}/$leffile $fillcell
+      if ( -f ${rootname}_filled.def ) then
+	 mv ${rootname}_filled.def ${rootname}.def
+      endif
    endif
 endif
 
