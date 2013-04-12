@@ -66,7 +66,7 @@ endif
 # Create the detailed route.
 #-----------------------------------------------
 
-${bindir}/qrouter -c ${rootname}.cfg ${rootname}
+${bindir}/qrouter -c ${rootname}.cfg ${rootname} >>& ${synthlog}
 
 set origname=${rootname:s/_buf//}
 mv ${rootname}_route.def ${origname}.def

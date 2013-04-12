@@ -102,7 +102,7 @@ endif
 ( pushd ${bindir}/twdir ;\
   source .twrc ;\
   popd ;\
-  TimberWolf $rootname )
+  TimberWolf $rootname >>& ${synthlog} )
 
 #---------------------------------------------------
 # 2) Prepare DEF and .cfg files for qrouter
@@ -111,10 +111,11 @@ endif
 if ($makedef == 1) then
    if ( "$techleffile" == "" ) then
       ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-                ${techdir}/$leffile
+                ${techdir}/$leffile >>& ${synthlog}
    else
       ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-                ${techdir}/$techleffile ${techdir}/$leffile
+                ${techdir}/$techleffile ${techdir}/$leffile \
+		>>& ${synthlog}
    endif
 endif
 
@@ -125,7 +126,8 @@ endif
 
 if ($makedef == 1) then
    if ( -f ${scriptdir}/addspacers.tcl ) then
-      ${scriptdir}/addspacers.tcl ${rootname} ${techdir}/$leffile $fillcell
+      ${scriptdir}/addspacers.tcl ${rootname} ${techdir}/$leffile \
+		$fillcell >>& ${synthlog}
       if ( -f ${rootname}_filled.def ) then
 	 mv ${rootname}_filled.def ${rootname}.def
       endif
