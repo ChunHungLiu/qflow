@@ -10,10 +10,8 @@ if ($#argv < 2) then
    exit 1
 endif
 
-# Split out options from the main arguments
-set argline=(`getopt "nr" $argv[1-]`)
-
-set options=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $1}'`
+# Split out options from the main arguments (no options---this is a placeholder)
+set argline=(`getopt "" $argv[1-]`)
 set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
 set argc=`echo $cmdargs | wc -w`
 
@@ -28,6 +26,13 @@ else
    echo       <source_name> is the root name of the verilog file, and
    exit 1
 endif
+
+foreach option (${argline})
+   switch (${option})
+      case --:
+	 break
+   endsw
+end
 
 set projectpath=$argv1
 set sourcename=$argv2

@@ -16,9 +16,7 @@ if ($#argv < 2) then
 endif
 
 # Split out options from the main arguments
-set argline=(`getopt "nr" $argv[1-]`)
-
-set options=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $1}'`
+set argline=(`getopt "kd" $argv[1-]`)
 set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
 set argc=`echo $cmdargs | wc -w`
 
@@ -33,13 +31,25 @@ else
    echo       <source_name> is the root name of the verilog file, and
    echo       [options] are:
    echo			-k	keep working files
+   echo			-d	generate DEF file for routing
    exit 1
 endif
 
 set keep=0
-if ("$options" == "-k") then
-   set keep=1
-endif
+set makedef=0
+
+foreach option (${argline})
+   switch (${option})
+      case -k:
+         set keep=1
+         breaksw
+      case -d:
+         set makedef=1
+         breaksw
+      case --:
+         break
+   endsw
+end
 
 set projectpath=$argv1
 set sourcename=$argv2
@@ -95,16 +105,32 @@ endif
   TimberWolf $rootname )
 
 #---------------------------------------------------
-# 2) Add spacer cells to create a straight border on
-#    the right side
+# 2) Prepare DEF and .cfg files for qrouter
 #---------------------------------------------------
 
-if ( -f ${scriptdir}/addpspacers.tcl ) then
-   ${scriptdir}/addspacers.tcl ${rootname} -p
+if ($makedef == 1) then
+   if ( "$techleffile" == "" ) then
+      ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
+                ${techdir}/$leffile
+   else
+      ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
+                ${techdir}/$techleffile ${techdir}/$leffile
+   endif
 endif
 
 #---------------------------------------------------
-# 3) Remove working files (except for the main
+# 3) Add spacer cells to create a straight border on
+#    the right side
+#---------------------------------------------------
+
+if ($makedef == 1) then
+   if ( -f ${scriptdir}/addspacers.tcl ) then
+      ${scriptdir}/addspacers.tcl ${rootname} ${techdir}/$leffile $fillcell
+   endif
+endif
+
+#---------------------------------------------------
+# 4) Remove working files (except for the main
 #    output files .pin, .pl1, and .pl2
 #---------------------------------------------------
 

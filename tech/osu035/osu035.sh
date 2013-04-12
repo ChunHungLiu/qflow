@@ -33,6 +33,7 @@ set bufpin_out=Y	;# Name of output port to buffer cell
 set inverter=INVX1	;# Minimum drive strength inverter cell
 set orgate=OR2X1	;# 2-input OR gate, minimum drive strength
 set andgate=AND2X1	;# 2-input AND gate, minimum drive strength
+set fillcell=FILL	;# Spacer (filler) cell (prefix, if more than one)
 
 set separator=X		;# Separator between gate names and drive strengths
 set techfile=SCN4M_SUBM.20	;# magic techfile

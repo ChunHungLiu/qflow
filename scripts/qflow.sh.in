@@ -195,7 +195,7 @@ echo "${scriptdir}/resynthesize.sh ${projectpath} ${modulename}" >> ${execfile}
 if ($dobuffer == 0) then
    echo -n "# " >> ${execfile}
 endif
-echo "${scriptdir}/placement.sh ${projectpath} ${modulename}" >> ${execfile}
+echo "${scriptdir}/placement.sh -d ${projectpath} ${modulename}" >> ${execfile}
 
 if ($doroute == 0) then
    echo -n "# " >> ${execfile}

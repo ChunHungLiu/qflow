@@ -62,20 +62,8 @@ if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
    set rootname=${rootname}_buf
 endif
 
-#------------------------------------------------
-# 1) Prepare DEF and .cfg files for qrouter
-#------------------------------------------------
-
-if ( "$techleffile" == "" ) then
-   ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-		${techdir}/$leffile
-else
-   ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-		${techdir}/$techleffile ${techdir}/$leffile
-endif
-
 #-----------------------------------------------
-# 2) Create the detailed route.
+# Create the detailed route.
 #-----------------------------------------------
 
 ${bindir}/qrouter -c ${rootname}.cfg ${rootname}
