@@ -104,7 +104,7 @@ endif
 
 ${bindir}/sis >> ${synthlog} << EOF
 read_blif ${rootname}.blif
-rlib ${techdir}/${techname}.genlib
+read_library ${techdir}/${techname}.genlib
 
 sweep; eliminate -1
 simplify -m nocomp
