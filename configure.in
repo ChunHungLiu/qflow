@@ -141,7 +141,7 @@ AC_DEFINE_UNQUOTED(QFLOW_VIS_PATH, "$QFLOW_VIS_PATH")
 
 AC_ARG_WITH(libdir,
 [  --with-libdir=DIR			path to qflow runtime files], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_LIB_DIR=$withval
    else
       QFLOW_LIB_DIR=${ac_default_prefix}/share/qflow
@@ -152,7 +152,7 @@ AC_ARG_WITH(libdir,
 
 AC_ARG_WITH(bindir,
 [  --with-bindir=DIR			path to qflow launch script], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_BIN_DIR=$withval
    else
       QFLOW_BIN_DIR=${ac_default_prefix}/bin
@@ -163,7 +163,7 @@ AC_ARG_WITH(bindir,
 
 AC_ARG_WITH(sourcedir,
 [  --with-sourcedir=DIR			default path to verilog source], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_SOURCE_DIR=$withval
    else
       QFLOW_SOURCE_DIR=source
@@ -174,7 +174,7 @@ AC_ARG_WITH(sourcedir,
 
 AC_ARG_WITH(synthdir,
 [  --with-synthdir=DIR			default path to synthesis files], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_SYNTH_DIR=$withval
    else
       QFLOW_SYNTH_DIR=synthesis
@@ -185,7 +185,7 @@ AC_ARG_WITH(synthdir,
 
 AC_ARG_WITH(layoutdir,
 [  --with-layoutdir=DIR			default path to layout files], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_LAYOUT_DIR=$withval
    else
       QFLOW_LAYOUT_DIR=synthesis
@@ -194,7 +194,7 @@ AC_ARG_WITH(layoutdir,
 
 AC_ARG_WITH(techdir,
 [  --with-techdir=DIR			default path to tech files], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_TECH_DIR=$withval
    else
       QFLOW_TECH_DIR=${QFLOW_LIB_DIR}/tech
@@ -205,18 +205,14 @@ AC_ARG_WITH(techdir,
 
 AC_ARG_WITH(techdefault,
 [  --with-techdefault=DIR		default technology], [
-   if test -f "$withval"; then
-      QFLOW_TECH=$withval
-   else
-      QFLOW_TECH=osu035
-   fi
+   QFLOW_TECH=$withval
 ], [
    QFLOW_TECH=osu035
 ])
 
 AC_ARG_WITH(projectroot,
 [  --with-projectroot=DIR		default project root], [
-   if test -f "$withval"; then
+   if test -d "$withval"; then
       QFLOW_PROJECT_ROOT=$withval
    else
       QFLOW_PROJECT_ROOT=.
