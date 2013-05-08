@@ -47,24 +47,23 @@ void helpmessage();
 int ParseNumber( char *test);
 struct Vect *VectorAlloc(void);
 
+char VddNet[LengthOfNodeName];
+char GndNet[LengthOfNodeName];
+
 int main ( int argc, char *argv[])
 {
-
 	FILE *NET1, *NET2, *OUT;
 	struct Resistor *ResistorData;
 	int i,AllMatched,NetsEqual,ImplicitPower,MaintainCase;
 
 	char Net1name[LengthOfNodeName];
+
+	strcpy(VddNet, "VDD");		// Default power net name
+	strcpy(GndNet, "VSS");		// Default ground net name
 	
-
-
-
-
-
-
 	ImplicitPower=TRUE;
 	MaintainCase=FALSE;
-        while( (i = getopt( argc, argv, "pchH" )) != EOF ) {
+        while( (i = getopt( argc, argv, "pchHv:g:" )) != EOF ) {
 	   switch( i ) {
 	   case 'p':
 	       ImplicitPower=FALSE;
@@ -75,6 +74,12 @@ int main ( int argc, char *argv[])
 	   case 'h':
 	   case 'H':
 	       helpmessage();
+	       break;
+	   case 'v':
+	       strcpy(VddNet, optarg);
+	       break;
+	   case 'g':
+	       strcpy(GndNet, optarg);
 	       break;
 	   default:
 	       fprintf(stderr,"\nbad switch %d\n", i );
@@ -154,7 +159,7 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
               if(sscanf(line,"MODEL %s",MainSubcktName)==1) {
 	         CleanupString(MainSubcktName);
 	         fprintf(OUT,"module %s (",MainSubcktName);
-	         if(ImplicitPower) fprintf(OUT," VSS, VDD, "); 
+	         if(ImplicitPower) fprintf(OUT," %s, %s, ", GndNet, VddNet); 
 	      }
 	      else if(strstr(line,"ENDMODEL") != NULL) {
                  fprintf(OUT,"endmodule\n");
@@ -258,7 +263,7 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 		 if (breakCond) break;
 	      }
 	      fprintf(OUT,");\n");
-	      if(ImplicitPower) fprintf(OUT,"input VSS, VDD; ");
+	      if(ImplicitPower) fprintf(OUT,"input %s, %s;\n", GndNet, VddNet);
 	      fprintf(OUT,"%s",allinputs);
 	      fprintf(OUT,"%s",alloutputs);
 	      VectorPresent=Vector;
@@ -274,7 +279,8 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	         if (!MaintainCase) ToLowerCase(InstanceName);
 	         fprintf(OUT,"\t%s u%d ( ",InstanceName,NumberOfInstances);
 	         First=TRUE;
-	         if(ImplicitPower) fprintf(OUT,".VSS(VSS), .VDD(VDD), "); 
+	         if(ImplicitPower) fprintf(OUT,".%s(%s), .%s(%s), ",
+			GndNet, GndNet, VddNet, VddNet); 
 	         while(loc_getline(line, sizeof(line), NETFILE)>1 ) {
 	            if(sscanf(line,"%s :  %s",InstancePortName,InstancePortWire)==2) {
 	               CleanupString(InstancePortName);

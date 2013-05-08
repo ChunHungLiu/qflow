@@ -56,6 +56,7 @@ if (! -f ${projectpath}/qflow_vars.sh ) then
 endif
 
 source ${projectpath}/qflow_vars.sh
+source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 # Reset the logfile
@@ -168,8 +169,7 @@ ${bindir}/CleanUpBDnet -f -b ${rootname}.bdnet > ${rootname}_tmp.bdnet
 echo "Running postproc"
 ${scriptdir}/postproc.tcl ${rootname}_tmp.bdnet \
  	${sourcedir}/${rootname}.init \
-	$flopcell $flopset $setpin $flopreset $resetpin \
-	$flopsetreset $inverter $orgate $andgate
+	${techdir}/${techname}.sh
 
 echo "Running AddIO2BDnet"
 ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
@@ -186,13 +186,22 @@ ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
 # command line (default is 18fF). . .
 #---------------------------------------------------------------------
 
+rm -f ${rootname}_buf_nofanout
+touch ${rootname}_buf_nofanout
+if ($?gndnet) then
+   echo $gndnet >> ${rootname}_buf_nofanout
+endif
+if ($?vddnet) then
+   echo $vddnet >> ${rootname}_buf_nofanout
+endif
+
 echo "Running BDnetFanout (iterative)"
 echo "" >> ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
       mv ${rootname}_buf.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 \
+      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}_buf.bdnet >>& ${synthlog}
@@ -209,11 +218,10 @@ echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
 echo ""
 
 echo "Running BDnet2Verilog."
-${bindir}/BDnet2Verilog ${rootname}_buf.bdnet > ${rootname}.rtl.v
+${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}_buf.bdnet \
+	> ${rootname}.rtl.v
 
-cat ${rootname}.rtl.v | \
-	sed -e '/.VSS/s/.VSS(VSS), .VDD(VDD),/ /' \
-	> ${rootname}.rtlnopwr.v
+${bindir}/BDnet2Verilog -p ${rootname}_buf.bdnet > ${rootname}.rtlnopwr.v
 
 # echo "Running BDnet2BSpice."
 # ${bindir}/BDnet2BSpice ${rootname}_buf.bdnet > ${rootname}.net
@@ -249,4 +257,4 @@ if (!(-f ${layoutdir}/${rootname}_buf.par)) then
    cp ${techdir}/${techname}.par ${layoutdir}/${rootname}_buf.par
 endif
 
-echo "Edit ${layoutdir}/${rootname}_buf.par, then run place_and_route.sh"
+echo "Edit ${layoutdir}/${rootname}_buf.par, then run placement and route"

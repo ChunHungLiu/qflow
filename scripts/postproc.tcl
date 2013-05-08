@@ -3,15 +3,16 @@
 # postproc --- post-process a bdnet file with the contents of the
 # "init" file produced by "vpreproc".  Each signal from the "init"
 # file is tracked down as the output to a flop, and that flop is replaced
-# by a set or reset flop accordingly.
+# by a set or reset flop accordingly.  Information about cells to use
+# and their pins, etc., are picked up from "variables_file".
 #-------------------------------------------------------------------------
 # Written by Tim Edwards May 6, 2007
 # MultiGiG, Inc.
 #-------------------------------------------------------------------------
 
-if {$argc < 8} {
+if {$argc < 3} {
    puts stderr \
-	"Usage:  postproc.tcl bdnet_file init_file flop setflop setpin resetflop resetpin flopsetreset inverter orgate andgate"
+	"Usage:  postproc.tcl bdnet_file init_file variables_file"
    exit 1
 }
 
@@ -29,17 +30,7 @@ if {"$initname" == "$initfile"} {
    set initfile ${initname}.init
 }
 
-#	$flopcell $flopset $setpin $flopreset $resetpin $flopsetreset $inverter $orgate $andgate
-
-set flop [lindex $argv 2]
-set setflop [lindex $argv 3]
-set setpin [lindex $argv 4]
-set resetflop [lindex $argv 5]
-set resetpin [lindex $argv 6]
-set flopsetreset  [lindex $argv 7]
-set inverter [lindex $argv 8]
-set orgate [lindex $argv 9]
-set andgate [lindex $argv 10]
+set varsfile [lindex $argv 2]
 
 #-------------------------------------------------------------
 # Open files for read and write
@@ -54,9 +45,26 @@ if [catch {open $initfile r} inet] {
    exit 1
 }
 
+if [catch {open $varsfile r} vfd] {
+   puts stderr "Error: can't open file $outfile for writing!"
+   exit 1
+}
+
 if [catch {open $outfile w} onet] {
    puts stderr "Error: can't open file $outfile for writing!"
    exit 1
+}
+
+#-------------------------------------------------------------
+# The variables file is a UNIX tcsh script, but it can be
+# processed like a Tcl script if we substitute space for '='
+# in the "set" commands.  Then all the variables are in Tcl
+# variable space.
+#-------------------------------------------------------------
+
+while {[gets $vfd line] >= 0} {
+   set tcmd [string map {= \ } $line]
+   eval $tcmd
 }
 
 #-------------------------------------------------------------
@@ -77,13 +85,13 @@ if {[gets $inet line] >= 0} {
 
 set flopsigs {}
 set floptypes {}
-set flopreset {}
+set flopresetnet {}
 
 while {[gets $inet line] >= 0} {
    if [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
       lappend flopsigs $signal
       lappend floptypes $initcond
-      lappend flopreset $resetnet
+      lappend flopresetnet $resetnet
    } else {
       set resetnet $line
       set resetnet [string map {! not_ ~ not_} $resetnet]
@@ -129,26 +137,27 @@ foreach resetnet $resetlist {
       set rstorig [string range $resetnet 4 end]
       puts $onet ""
       puts $onet "INSTANCE \"${inverter}\":\"physical\""
-      puts $onet "\t\"A\" : \"${rstorig}\";"
-      puts $onet "\t\"Y\" : \"${resetnet}\";"
+      puts $onet "\t\"${invertpin_in}\" : \"${rstorig}\";"
+      puts $onet "\t\"${invertpin_out}\" : \"${resetnet}\";"
       puts $onet ""
    }
    puts $onet ""
    puts $onet "INSTANCE \"${inverter}\":\"physical\""
-   puts $onet "\t\"A\" : \"${resetnet}\";"
-   puts $onet "\t\"Y\" : \"pp_${resetnet}bar\";"
+   puts $onet "\t\"${invertpin_in}\" : \"${resetnet}\";"
+   puts $onet "\t\"${invertpin_out}\" : \"pp_${resetnet}bar\";"
    puts $onet ""
 }
 
 set sridx 0
 while {1} {
-   if [regexp [subst {^INSTANCE "${flop}":"physical"}] $line lmatch] {
+   if [regexp [subst {^INSTANCE "${flopcell}":"physical"}] $line lmatch] {
        gets $bnet dline
        gets $bnet cpline
        gets $bnet qline
        set srline ""
        
-       if [regexp {"Q"[ \t]+:[ \t]+"(.+)"} $qline lmatch signame] {
+       if [regexp [subst {"${floppinout}"\[ \\t\]+:\[ \\t\]+"(.+)"}] \
+			$qline lmatch signame] {
 	  set sigtest [string map {\[ << \] >>} $signame]
 	  set idx [lsearch $flopsigs $sigtest]
           if {$idx < 0} {
@@ -159,37 +168,90 @@ while {1} {
 	  }
           if {$idx >= 0} {
 	     set flopt [lindex $floptypes $idx]
-	     set resetnet [lindex $flopreset $idx]
-	     if {$flopt == 1} {
-		set line "INSTANCE \"${setflop}\":\"physical\""
-		set srline "\t\"${setpin}\" : \"${resetnet}\""
-	     } elseif {$flopt == 0} {
-		set line "INSTANCE \"${resetflop}\":\"physical\""
-		set srline "\t\"${resetpin}\" : \"pp_${resetnet}bar\""
+	     set resetnet [lindex $flopresetnet $idx]
+	     if {$setpininvert == 1} {
+	        set setresetnet pp_${resetnet}bar
 	     } else {
-		# Set signal to another signal.  We remove all pretense of
-		# being independent of the technology here. . .
+	        set setresetnet ${resetnet}
+	     }
+	     if {$resetpininvert == 1} {
+	        set resetresetnet pp_${resetnet}bar
+	     } else {
+	        set resetresetnet ${resetnet}
+	     }
+	     if {$flopt == 1} {
+		if {[catch {set $flopset}]} {
+		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
+		   set srline "\t\"${setpin}\" : \"${setresetnet}\";\
+				\n\t\"${resetpin}\" : \"${gndnet}\";"
+		} else {
+		   set line "INSTANCE \"${flopset}\":\"physical\""
+		   set srline "\t\"${setpin}\" : \"${setresetnet}\""
+		}
+	     } elseif {$flopt == 0} {
+		if {[catch {set $flopreset}]} {
+		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
+		   set srline "\t\"${setpin}\" : \"${gndnet}\";\
+				\n\t\"${resetpin}\" : \"${resetresetnet}\";"
+		} else {
+		   set line "INSTANCE \"${flopreset}\":\"physical\""
+		   set srline "\t\"${resetpin}\" : \"${resetresetnet}\""
+		}
+	     } else {
+		# Set signal to another signal.
 		set net1 sr_net_${sridx}
 		incr sridx
 		set net2 sr_net_${sridx}
 		incr sridx
-		set line "INSTANCE \"${andgate}\":\"physical\""
-		puts $onet $line
-		set line "\t\"A\" : \"${resetnet}\";"
-		puts $onet $line
-		set line "\t\"B\" : \"${flopt}\";"
-		puts $onet $line
-		set line "\t\"Y\" : \"${net1}\";\n"
-		puts $onet $line
 
-		set line "INSTANCE \"${orgate}\":\"physical\""
-		puts $onet $line
-		set line "\t\"A\" : \"pp_${resetnet}bar\";"
-		puts $onet $line
-		set line "\t\"B\" : \"${flopt}\";"
-		puts $onet $line
-		set line "\t\"Y\" : \"${net2}\";\n"
-		puts $onet $line
+		if {$setpininvert == 0 || $resetpininvert == 1} {
+		   set line "INSTANCE \"${inverter}\":\"physical\""
+		   puts $onet $line
+		   set line "\t\"${invertpin_in}\" : \"${flopt}\";"
+		   puts $onet $line
+		   set line "\t\"${invertpin_out}\" : \"pp_${flopt}bar\";"
+		   puts $onet $line
+		}
+
+		if {$setpininvert == 1} {
+		   set line "INSTANCE \"${nandgate}\":\"physical\""
+		   puts $onet $line
+		   set line "\t\"${nandpin_in1}\" : \"${resetnet}\";"
+		   puts $onet $line
+		   set line "\t\"${nandpin_in2}\" : \"${flopt}\";"
+		   puts $onet $line
+		   set line "\t\"${nandpin_out}\" : \"${net1}\";\n"
+		   puts $onet $line
+		} else {
+		   set line "INSTANCE \"${norgate}\":\"physical\""
+		   puts $onet $line
+		   set line "\t\"${norpin_in1}\" : \"pp_${resetnet}bar\";"
+		   puts $onet $line
+		   set line "\t\"${norpin_in2}\" : \"pp_${flopt}bar\";"
+		   puts $onet $line
+		   set line "\t\"${norpin_out}\" : \"${net1}\";\n"
+		   puts $onet $line
+		}
+
+		if {$resetpininvert == 1} {
+		   set line "INSTANCE \"${nandgate}\":\"physical\""
+		   puts $onet $line
+		   set line "\t\"${nandpin_in1}\" : \"${resetnet}\";"
+		   puts $onet $line
+		   set line "\t\"${nandpin_in2}\" : \"pp_${flopt}bar\";"
+		   puts $onet $line
+		   set line "\t\"${nandpin_out}\" : \"${net2}\";\n"
+		   puts $onet $line
+		} else {
+		   set line "INSTANCE \"${norgate}\":\"physical\""
+		   puts $onet $line
+		   set line "\t\"${norpin_in1}\" : \"pp_${resetnet}bar\";"
+		   puts $onet $line
+		   set line "\t\"${norpin_in2}\" : \"${flopt}\";"
+		   puts $onet $line
+		   set line "\t\"${norpin_out}\" : \"${net2}\";\n"
+		   puts $onet $line
+		}
 
 		set line "INSTANCE \"${flopsetreset}\":\"physical\""
 		set srline \

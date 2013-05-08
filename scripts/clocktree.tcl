@@ -10,7 +10,7 @@
 #---------------------------------------------------------------------------
 namespace path {::tcl::mathop ::tcl::mathfunc}
 
-if {$argc < 5 || $argc > 6} {
+if {$argc < 5 || $argc > 7} {
    puts stdout "Usage:  clocktree.tcl <module_name>"
    puts stdout "	<synth_dir> <layout_dir> <lef_file>"
    puts stdout "	<buffer_name> \[<max_fanout>\]"
@@ -30,6 +30,7 @@ set bufname	[lindex $argv 4]
 set pinfile ${layoutdir}/${modulename}.pin
 set bdnetfile ${synthdir}/${modulename}.bdnet
 set outfile ${synthdir}/${modulename}_tmp.bdnet
+set ignorefile ${synthdir}/${modulename}_nofanout
 
 if {$argc == 6} {set maxfanout [lindex $argv 5]}
 
@@ -49,6 +50,20 @@ if [catch {open ${leffile} r} flef] {
    puts stderr "Error: can't open file $leffile for input"
    exit 0
 }
+
+set ignorenets {}
+if ![catch {open ${ignorefile} r} fign] {
+   while {[gets $fign line] >= 0} {
+      lappend ignorenets $line
+   }
+   close $fign
+   set ignorenets [lsort -uniq $ignorenets]
+}
+puts stdout "nets to be ignored: $ignorenets"
+
+#------------------------------------------------------------------
+# Pick up list of nets not to break up into trees (e.g., vdd, gnd)
+#------------------------------------------------------------------
 
 #------------------------------------------------------------------------------------
 # LEF file reading routines
@@ -252,6 +267,7 @@ puts stdout "Number of nets:  [dict size $nets]"
 dict for {netname inst} $nets {
    set netsize [dict size $inst]
    if {$netsize > $maxfanout} {
+      if {[lsearch $ignorenets $netname] >= 0} {continue}
       puts stdout "Net $netname fanout $netsize exceeds maximum of $maxfanout"
       set subnets [/ $netsize $maxfanout]
       set remain [% $netsize $maxfanout]

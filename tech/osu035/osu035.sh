@@ -16,24 +16,39 @@ set techleffile=""
 
 # All cells below should be the lowest output drive strength value,
 # if the standard cell set has multiple cells with different drive
-# strengths.  Use the name of the set-reset flop for any of the
-# flop types that don't exist.  Otherwise, use the empty list {}
-# for any cells that do not exist in the standard cell set.
+# strengths.  Comment out any cells that do not exist.
 
 set flopcell=DFFPOSX1	;# Standard positive-clocked DFF, no set or reset
-set flopset=DFFSR	;# DFF with preset
-set setpin=S		;# The name of the set pin on the DFF
-set flopreset=DFFSR	;# DFF with clear
-set resetpin=R		;# The name of the clear/reset pin on the DFF
+# set flopset=DFFS	;# DFF with preset, if available
+# set flopreset=DFFSR	;# DFF with clear, if available
 set flopsetreset=DFFSR	;# DFF with both set and clear
+set setpin=S		;# The name of the set pin on DFFs
+set resetpin=R		;# The name of the clear/reset pin on DFFs
+set setpininvert=0	;# Set this to 1 if the set pin is inverted (!set)
+set resetpininvert=0	;# Set this to 1 if the reset pin is inverted (!reset)
+set floppinout=Q	;# Name of the output pin on DFFs
 
 set bufcell=BUFX2	;# Minimum drive strength buffer cell
 set bufpin_in=A		;# Name of input port to buffer cell
 set bufpin_out=Y	;# Name of output port to buffer cell
 set inverter=INVX1	;# Minimum drive strength inverter cell
-set orgate=OR2X1	;# 2-input OR gate, minimum drive strength
-set andgate=AND2X1	;# 2-input AND gate, minimum drive strength
+set invertpin_in=A	;# Name of input port to inverter cell
+set invertpin_out=Y	;# Name of output port to inverter cell
+set norgate=NOR2X1	;# 2-input NOR gate, minimum drive strength
+set norpin_in1=A	;# Name of first input pin to NOR gate
+set norpin_in2=B	;# Name of second input pin to NOR gate
+set norpin_out=Y	;# Name of output pin from OR gate
+set nandgate=NAND2X1	;# 2-input NAND gate, minimum drive strength
+set nandpin_in1=A	;# Name of first input pin to NAND gate
+set nandpin_in2=B	;# Name of second input pin to NAND gate
+set nandpin_out=Y	;# Name of output pin from NAND gate
 set fillcell=FILL	;# Spacer (filler) cell (prefix, if more than one)
+
+# set tiehi=TIEHI	;# Cell to connect to power, if one exists
+# set tielo=TIELO	;# Cell to connect to ground, if one exists
+
+set gndnet=gnd		;# Name used for ground pins in standard cells
+set vddnet=vdd		;# Name used for power pins in standard cells
 
 set separator=X		;# Separator between gate names and drive strengths
 set techfile=SCN4M_SUBM.20	;# magic techfile

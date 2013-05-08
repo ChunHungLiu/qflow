@@ -81,6 +81,7 @@ cd ${synthdir}
 
 rm -f ${origname}.bdnet
 rm -f ${rootname}_orig.bdnet
+rm -f ${rootname}_buf_nofanout
 
 #----------------------------------------------------------
 # Clean up the (excessively numerous) Timberwolf files
@@ -99,7 +100,9 @@ rm -f ${rootname}.pin ${rootname}.pl1 ${rootname}.pl2
 rm -f ${rootname}.cfg
 
 rm -f ${origname}_unrouted.def
-mv -f ${rootname}.def ${origname}_unrouted.def
+if ( -f ${rootname}.def ) then
+   mv ${rootname}.def ${origname}_unrouted.def
+endif
 
 rm -f cn
 rm -f failed

@@ -48,6 +48,7 @@ if (! -f ${projectpath}/qflow_vars.sh ) then
 endif
 
 source ${projectpath}/qflow_vars.sh
+source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 #----------------------------------------------------------
@@ -66,7 +67,8 @@ endif
 # Create the detailed route.
 #-----------------------------------------------
 
-${bindir}/qrouter -c ${rootname}.cfg ${rootname} >>& ${synthlog}
+${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
+		${rootname} >>& ${synthlog}
 
 set origname=${rootname:s/_buf//}
 mv ${rootname}_route.def ${origname}.def

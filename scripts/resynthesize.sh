@@ -57,6 +57,7 @@ if (! -f ${projectpath}/qflow_vars.sh ) then
 endif
 
 source ${projectpath}/qflow_vars.sh
+source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 touch ${synthlog}
@@ -106,7 +107,7 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
       mv ${rootname}_buf.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 \
+      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_buf_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}_buf.bdnet >>& ${synthlog}
@@ -122,12 +123,11 @@ echo "   Verilog: ${synthdir}/${rootname}.rtl.v"
 echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
 echo ""
 
-echo "Running Bdnet2Verilog."
-${bindir}/Bdnet2Verilog ${rootname}_buf.bdnet > ${rootname}.rtl.v
+echo "Running BDnet2Verilog."
+${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}_buf.bdnet \
+	> ${rootname}.rtl.v
 
-cat ${rootname}.rtl.v | \
-	sed -e '/.VSS/s/.VSS(VSS), .VDD(VDD),/ /' \
-	> ${rootname}.rtlnopwr.v
+${bindir}/BDnet2Verilog -p ${rootname}_buf.bdnet > ${rootname}.rtlnopwr.v
 
 #-------------------------------------------------------------------------
 # Clean up after myself!
@@ -150,4 +150,4 @@ ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}_buf.bdnet \
 	${techdir}/${leffile} \
 	${layoutdir}/${rootname}_buf.cel
 
-echo "Now re-run place_and_route.sh"
+echo "Now re-run placement, and route"

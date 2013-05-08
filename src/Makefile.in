@@ -40,7 +40,7 @@ CleanUpBDnet$(EXEEXT): CleanUpBDnet.o
 vpreproc$(EXEEXT): vpreproc.o
 	$(CC) $(LDFLAGS) vpreproc.o -o $@ $(LIBS)
 
-install:
+install: $(TARGETS)
 	@echo "Installing verilog and BDNET file format handlers"
 	$(INSTALL) -d ${BININSTALL}
 	@for target in $(TARGETS); do \

@@ -92,6 +92,7 @@ int main ( int argc, char *argv[])
            switch( i ) {
 	   case 't':
 	       TechFile = strdup(optarg);
+	       break;
 	   case 'b':
 	       bufCell.name = strdup(optarg);
 	       break;

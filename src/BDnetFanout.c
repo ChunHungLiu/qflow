@@ -54,6 +54,7 @@ char *Buffername = NULL;
 char *buf_in_pin;
 char *buf_out_pin;
 char *Gatepath = NULL;
+char *Ignorepath = NULL;
 char *Separator = NULL;
 char SuffixIsNumeric;
 int  Input_node_num = 0;
@@ -97,6 +98,7 @@ struct Gatelist *Gatel;
 
 struct Nodelist {
    struct Nodelist *next;
+   char	  ignore;
    char   *nodename;
    char   *outputgatename;
    double outputgatestrength;
@@ -113,6 +115,7 @@ enum states_ {NONE, OUTPUTS, GATENAME, GATETYPE, PINNAME, INPUTNODE,
 enum nodetype_ {INPUT, OUTPUT, OUTPUTPIN, UNKNOWN};
 
 void read_gate_file(char *gate_file_name);
+void read_ignore_file(char *ignore_file_name);
 struct Gatelist* GatelistAlloc();
 struct Nodelist* NodelistAlloc();
 void showgatelist(void);
@@ -151,7 +154,8 @@ char *find_suffix(char *gatename)
          suffix = tsuf;
          gptr = tsuf + 1;
       }
-      suffix += strlen(Separator);
+      if (suffix != NULL)
+	 suffix += strlen(Separator);
    }
    return suffix;
 }
@@ -186,7 +190,7 @@ int main (int argc, char *argv[])
    Nodel = NodelistAlloc();
    nl = Nodel;
 
-   while ((i = getopt(argc, argv, "gnhvl:c:b:i:o:p:s:")) != EOF) {
+   while ((i = getopt(argc, argv, "gnhvl:c:b:i:o:p:s:f:")) != EOF) {
       switch (i) {
 	 case 'b':
 	    Buffername = strdup(optarg);
@@ -199,6 +203,9 @@ int main (int argc, char *argv[])
 	    break;
          case 'p':
 	    Gatepath = strdup(optarg);
+	    break;
+	 case 'f':
+	    Ignorepath = strdup(optarg);
 	    break;
          case 'l':
 	    MaxLatency = atof(optarg);
@@ -346,6 +353,9 @@ int main (int argc, char *argv[])
       }
    }
 
+   /* get list of nets to ignore, if there is one, and mark nets to ignore */
+   if (Ignorepath != NULL) read_ignore_file(Ignorepath);
+
    /* input nodes are parsed, and Nodel is loaded */
    if (NodePrintFlag) shownodes();
 
@@ -354,17 +364,19 @@ int main (int argc, char *argv[])
       if (nl->outputgatestrength != 0.0) {
 	 nl->ratio = nl->total_load / nl->outputgatestrength;
       }
-      if (nl->num_inputs >= Topfanout && nl->outputgatestrength != 0.0) {
-	 Topfanout = nl->num_inputs;
-	 strcpy(Nodename, nl->nodename);
-	 strcpy(Gatename, nl->outputgatename);
-	 Strength = nl->outputgatestrength;
-      }
-      if (nl->ratio >= Topratio && nl->outputgatestrength != 0.0) {
-	 Topratio = nl->ratio;
-      }
-      if (nl->total_load >= Topload && nl->outputgatestrength != 0.0) {
-	 Topload = nl->total_load;
+      if (nl->ignore == FALSE) {
+         if (nl->num_inputs >= Topfanout && nl->outputgatestrength != 0.0) {
+	    Topfanout = nl->num_inputs;
+	    strcpy(Nodename, nl->nodename);
+	    strcpy(Gatename, nl->outputgatename);
+	    Strength = nl->outputgatestrength;
+         }
+         if (nl->ratio >= Topratio && nl->outputgatestrength != 0.0) {
+	    Topratio = nl->ratio;
+         }
+         if (nl->total_load >= Topload && nl->outputgatestrength != 0.0) {
+	    Topload = nl->total_load;
+	 }
       }
    }
 
@@ -414,8 +426,49 @@ int main (int argc, char *argv[])
    }
    if (j != 0) fprintf(stderr, "\n");
 
+   if (infptr != stdin) fclose(infptr);
+   if (outfptr != stdout) fclose(outfptr);
+
    return Changed_count;	// exit with number of gates changed
 				// so we can iterate until this is zero.
+}
+
+/*
+ *---------------------------------------------------------------------------
+ * Read a file of nets for which we should ignore fanout.  Typically this
+ * would include the power and ground nets, but may include other static
+ * nets with non-critical timing.
+ *---------------------------------------------------------------------------
+ */
+
+void read_ignore_file(char *ignore_file_name)
+{
+   struct Nodelist *nl;
+   FILE *ignorefptr;
+   char line[MAXLINE];
+   char *s, *sp;
+
+   if (!(ignorefptr = fopen(ignore_file_name, "r"))) {
+      fprintf(stderr, "BDnetFanout:  Couldn't open %s as ignore file.\n",
+		ignore_file_name);
+      fflush(stderr);
+      // This is only a warning.  It will not stop executaion of BDnetFanout
+   }
+
+   while ((s = fgets(line, MAXLINE, ignorefptr)) != NULL) {
+      // One net name per line
+      while (isspace(*s)) s++;
+      sp = s;
+      while (*sp != '\0' && *sp != '\n' && !isspace(*sp)) sp++;
+      *sp = '\0';
+
+      for (nl = Nodel; nl->next; nl = nl->next) {
+         if (!(strcmp(nl->nodename, s))) {
+	    nl->ignore = (char)1;
+	    break;
+         }
+      }
+   }
 }
 
 /*
@@ -509,6 +562,8 @@ void read_gate_file(char *gate_file_name)
 	 GateCount++;
       }
    }
+
+   fclose(gatefptr);
 }
 
 /*
@@ -538,6 +593,7 @@ struct Nodelist* NodelistAlloc()
    nl = (struct Nodelist *)malloc(sizeof(struct Nodelist));
    nl->next = NULL;
    nl->nodename = calloc(MAXGATENAME, 1);
+   nl->ignore = FALSE;
    nl->outputgatename = calloc(MAXGATENAME, 1);
    nl->outputgatestrength = 0.0;
    nl->is_outputpin = FALSE;
@@ -686,7 +742,6 @@ void write_output(FILE *infptr, FILE *outfptr)
    char *cbest, *cend, *stren, *orig;
    int  state, i;
    int gateinputs;
-   int found;
    int needscorrecting;
    struct Gatelist *gl;
    struct Nodelist *nl;
@@ -694,7 +749,6 @@ void write_output(FILE *infptr, FILE *outfptr)
 
    Changed_count = 0;
    state = NONE;
-   found = 0;
    needscorrecting = 0;
 
    rewind(infptr);
@@ -742,7 +796,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 
 	       for (nl = Nodel; nl->next ; nl = nl->next) {
 		  if (!strcmp(Nodename, nl->nodename)) {
-		     if (nl->ratio > 1.0) {
+		     if ((nl->ignore == FALSE) && (nl->ratio > 1.0)) {
 			if (VerboseFlag)
 			   printf("\nGate should be %g times stronger", nl->ratio);
 			needscorrecting = TRUE;
@@ -754,7 +808,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     }
 
 		     // Is this node an output pin?  Check required output drive.
-		     if (nl->is_outputpin == TRUE) {
+		     if ((nl->ignore == FALSE) && (nl->is_outputpin == TRUE)) {
 		        orig = find_size(Gatename);
 			stren = best_size(Gatename, nl->total_load + MaxOutputCap
 				+ WireCap, NULL);
@@ -765,7 +819,6 @@ void write_output(FILE *infptr, FILE *outfptr)
 					Gatename, stren);
 			}
 		     }
-		     found = TRUE;
 		  }
 	       }
 	       break;
@@ -1024,6 +1077,7 @@ void helpmessage(void)
    printf("\t-o value\tSet the maximum output capacitance (fF).  (default %g)\n",
 		MaxOutputCap);
    printf("\t-p filepath\tSpecify an alternate path and filename for gate.cfg\n");
+   printf("\t-f filepath\tSpecify a path and filename for list of nets to ignore\n");
    printf("\t-h\t\tprint this help message\n\n");
 
    printf("This will not work at all for tristate gates.\n");

@@ -169,8 +169,6 @@ echo "set synthlog=${projectpath}/synth.log" >> ${varfile}
 echo "#-------------------------------------------" >> ${varfile}
 echo "" >> ${varfile}
 
-tail -n +2 $techdir/${tech}.sh >> ${varfile}
-
 echo "#\!/bin/tcsh" > ${execfile}
 echo "#-------------------------------------------" >> ${execfile}
 echo "# qflow exec script for project ${project}" >> ${execfile}

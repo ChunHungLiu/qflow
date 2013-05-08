@@ -65,6 +65,7 @@ if (! -f ${projectpath}/qflow_vars.sh ) then
 endif
 
 source ${projectpath}/qflow_vars.sh
+source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 #----------------------------------------------------------
