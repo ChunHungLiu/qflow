@@ -452,6 +452,7 @@ void read_ignore_file(char *ignore_file_name)
       fprintf(stderr, "BDnetFanout:  Couldn't open %s as ignore file.\n",
 		ignore_file_name);
       fflush(stderr);
+      return;
       // This is only a warning.  It will not stop executaion of BDnetFanout
    }
 
@@ -469,6 +470,7 @@ void read_ignore_file(char *ignore_file_name)
          }
       }
    }
+   fclose(ignorefptr);
 }
 
 /*
