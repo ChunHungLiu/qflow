@@ -1,9 +1,12 @@
+//--------------------------------------------------------------
 // BDnet2BSpice
 //
 // Revision 0, 2006-11-11: First release by R. Timothy Edwards.
 // Revision 1, 2009-07-13: Minor cleanups by Philipp Klaus Krause.
+// Revision 2, 2013-05-10: Modified to take a library of subcell
+//		definitions to use for determining port order.
 //
-// This program is written in ISO C99.
+//--------------------------------------------------------------
 
 #include <stdio.h>
 #include <string.h>
@@ -29,32 +32,66 @@
 extern	int	optind, getopt();
 extern	char	*optarg;
 
-void ReadNetlistAndConvert(FILE *, FILE *, int);
+void ReadNetlistAndConvert(FILE *, FILE *, FILE *, char *, char *, char *);
 void CleanupString(char text[]);
 float getnumber(char *strpntbegin);
 int loc_getline( char s[], int lim, FILE *fp);
 void helpmessage();
 
+//--------------------------------------------------------
+// Structures for maintaining port order for subcircuits
+// read from a SPICE library
+//--------------------------------------------------------
+
+typedef struct _portrec *portrecp;
+
+typedef struct _portrec {
+   portrecp next;
+   char *name;
+   char signal[LengthOfNodeName];	// Instance can write signal name here
+} portrec;
+
+typedef struct _subcircuit *subcircuitp;
+
+typedef struct _subcircuit {
+   subcircuitp next; 
+   char *name;
+   portrecp ports;
+} subcircuit;
+
+//--------------------------------------------------------
+
 int main ( int argc, char *argv[])
 {
-
-	FILE *NET1, *NET2, *OUT;
+	FILE *NET1, *NET2 = NULL, *OUT;
 	struct Resistor *ResistorData;
-	int i,AllMatched,NetsEqual,ImplicitPower;
+	int i,AllMatched,NetsEqual;
 
 	char Net1name[LengthOfNodeName];
-	
+	char Net2name[LengthOfNodeName];
 
+	char *vddnet = NULL;
+	char *gndnet = NULL;
+	char *subnet = NULL;
 
+	Net2name[0] = '\0';
 
+	// Use implicit power if power and ground nodes are global in SPICE
+	// Otherwise, use "-p".
 
-
-
-	ImplicitPower=TRUE;
-        while( (i = getopt( argc, argv, "phH" )) != EOF ) {
+        while( (i = getopt( argc, argv, "hHl:p:g:s:" )) != EOF ) {
 	   switch( i ) {
 	   case 'p':
-	       ImplicitPower=FALSE;
+	       vddnet = strdup(optarg);
+	       break;
+	   case 'g':
+	       gndnet = strdup(optarg);
+	       break;
+	   case 's':
+	       subnet = strdup(optarg);
+	       break;
+	   case 'l':
+	       strcpy(Net2name,optarg);
 	       break;
 	   case 'h':
 	   case 'H':
@@ -78,19 +115,20 @@ int main ( int argc, char *argv[])
         optind++;
 	NET1=fopen(Net1name,"r");
 	if (NET1 == NULL ) {
-		fprintf(stderr,"Couldn't open %s for read\n",Net1name);
+		fprintf(stderr,"Couldn't open %s for reading\n",Net1name);
 		exit(EXIT_FAILURE);
 	}
+
+	if (Net2name[0] != '\0') {
+	    NET2 = fopen(Net2name, "r");
+	    if (NET2 == NULL)
+		fprintf(stderr, "Couldn't open %s for reading\n", Net2name);
+	}
+
 	OUT=stdout;
-	ReadNetlistAndConvert(NET1,OUT,ImplicitPower);
+	ReadNetlistAndConvert(NET1, NET2, OUT, vddnet, gndnet, subnet);
         return 0;
-
-
 }
-
-
-
-
 
 /*--------------------------------------------------------------*/
 /*C *Alloc - Allocates memory for linked list elements		*/
@@ -99,13 +137,13 @@ int main ( int argc, char *argv[])
         RETURNS: 1 to OS
    SIDE EFFECTS: 
 \*--------------------------------------------------------------*/
-void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower)
-{
 
+void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT, 
+		char *vddnet, char *gndnet, char *subnet)
+{
 	int i,Found,NumberOfInputs,NumberOfOutputs,NumberOfInstances;
 
 	float length, width, Value;
-
 
 	char *node2pnt,*lengthpnt,*widthpnt,*FirstblankafterNode2;
         char line[LengthOfLine];
@@ -119,15 +157,147 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower)
         char node2[LengthOfNodeName],nodelabel[LengthOfNodeName];
         char body[LengthOfNodeName],model[LengthOfNodeName];
 
-/* Read in line by line */
+	subcircuitp subcktlib = NULL, tsub;
+	portrecp tport;
+
+	int uniquenode = 1000;
+
+	// Read a SPICE library of subcircuits
+
+	if (libfile != NULL) {
+	    char *sp, *sp2;
+	    subcircuitp newsubckt;
+	    portrecp newport, lastport;
+
+	    /* If we specify a library, then we need to make sure that	*/
+	    /* "vddnet" and "gndnet" are non-NULL, so that they will be	*/
+	    /* filled in correctly.  If not specified on the command	*/
+	    /* line, they default to "vdd" and "vss".			*/
+
+	    if (vddnet == NULL) vddnet = strdup("vdd");
+	    if (gndnet == NULL) gndnet = strdup("gnd");
+
+	    /* Read SPICE library of subcircuits, if one is specified.	*/
+	    /* Retain the name and order of ports passed to each	*/
+	    /* subcircuit.						*/
+	    while (loc_getline(line, sizeof(line), libfile) > 0) {
+		if (!strncasecmp(line, ".subckt", 7)) {
+		   /* Read cellname */
+		   sp = line + 7;
+		   while (isspace(*sp) && (*sp != '\n')) sp++;
+		   sp2 = sp;
+		   while (!isspace(*sp2) && (*sp2 != '\n')) sp2++;
+		   *sp2 = '\0';
+
+		   newsubckt = (subcircuitp)malloc(sizeof(subcircuit));
+		   newsubckt->name = strdup(sp);
+		   newsubckt->next = subcktlib;
+		   subcktlib = newsubckt;
+		   newsubckt->ports = NULL;
+
+		   sp = sp2 + 1;
+		   while (isspace(*sp) && (*sp != '\n') && (*sp != '\0')) sp++;
+		   while (1) {
+
+		      /* Move string pointer to next port name */
+
+		      if (*sp == '\n' || *sp == '\0') {
+			 loc_getline(line, sizeof(line), libfile);
+			 if (*line == '+') {
+			    sp = line + 1;
+			    while (isspace(*sp) && (*sp != '\n')) sp++;
+			 }
+			 else
+			    break;
+		      }
+
+		      /* Terminate port name and advance pointer */
+		      sp2 = sp;
+		      while (!isspace(*sp2) && (*sp2 != '\n')) sp2++;
+		      *sp2 = '\0';
+
+		      /* Get next port */
+
+		      newport = (portrecp)malloc(sizeof(portrec));
+		      newport->next = NULL;
+		      newport->name = strdup(sp);
+	
+		      /* This is a bit of a hack.  It's difficult to	*/
+		      /* tell what the standard cell set is going to	*/
+		      /* use for power bus names.  It's okay to fill in	*/
+		      /* signals with similar names here, as they will	*/
+		      /* (should!) match up to port names in the BDNET	*/
+		      /* file, and will be overwritten later.  Well	*/
+		      /* connections are not considered here, but maybe	*/
+		      /* they should be?				*/
+
+		      if (!strncasecmp(sp, "vdd", 3))
+			 strcpy(newport->signal, vddnet);
+		      else if (!strncasecmp(sp, "vss", 3))
+			 strcpy(newport->signal, gndnet);
+		      else if (!strncasecmp(sp, "gnd", 3))
+			 strcpy(newport->signal, gndnet);
+		      else if (!strncasecmp(sp, "sub", 3)) {
+			 if (subnet != NULL)
+			    strcpy(newport->signal, subnet);
+		      }
+		      else 
+		         newport->signal[0] = '\0';
+
+		      if (newsubckt->ports == NULL)
+			 newsubckt->ports = newport;
+		      else
+			 lastport->next = newport;
+
+		      lastport = newport;
+
+		      sp = sp2 + 1;
+		   }
+
+		   /* Read input to end of subcircuit */
+
+		   if (strncasecmp(line, ".ends", 4)) {
+		      while (loc_getline(line, sizeof(line), libfile) > 0)
+		         if (!strncasecmp(line, ".ends", 4))
+			    break;
+		   }
+		}
+	    }
+	}
+
+	/* Read in line by line */
 
 	NumberOfInstances=0;
         while(loc_getline(line, sizeof(line), NETFILE)>0 ) {
 	   if(strstr(line,"MODEL") != NULL ) {
               if(sscanf(line,"MODEL %s",MainSubcktName)==1) {
 	         CleanupString(MainSubcktName);
+		 fprintf(OUT, "*SPICE netlist created from BDNET module "
+			"%s by BDnet2BSpice\n", MainSubcktName);
+		 fprintf(OUT,"");
+
+		 if (subcktlib != NULL) {
+		    /* Write out the subcircuit library file verbatim */
+		    rewind(libfile);
+		    while (loc_getline(line, sizeof(line), libfile) > 0)
+		       fputs(line, OUT);
+		    fclose(libfile);
+		    fprintf(OUT,"");
+		 }
+
 	         fprintf(OUT,".subckt %s ",MainSubcktName);
-	         if(ImplicitPower) fprintf(OUT,"vdd vss ");
+	         if (vddnet == NULL)
+		    fprintf(OUT,"vdd ");
+		 else
+		    fprintf(OUT,"%s ", vddnet);
+
+	         if (gndnet == NULL)
+		    fprintf(OUT,"vss ");
+		 else
+		    fprintf(OUT,"%s ", gndnet);
+
+		 if ((subnet != NULL) && strcasecmp(subnet, gndnet))
+		    fprintf(OUT,"%s ", subnet);
 	      }
 	      else if(strstr(line,"ENDMODEL") != NULL) {
                  fprintf(OUT,".ends %s\n ",MainSubcktName);
@@ -144,6 +314,7 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower)
 	            fprintf(OUT,"%s ",InputName);
 	            NumberOfInputs+=1; 
 	         }
+		 else if (strstr(line, "OUTPUT")) break;
 	      }
 	   }
 	   if(strstr(line,"OUTPUT") != NULL ) {
@@ -157,15 +328,29 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower)
 	            fprintf(OUT,"%s ",OutputName);
 	            NumberOfOutputs+=1; 
 	         }
+		 else if (strstr(line, "INSTANCE")) break;
 	      }
 	      fprintf(OUT,"\n");
 	   }
 	   if(strstr(line,"INSTANCE") != NULL ) {
 	      NumberOfInstances+=1;
 	      fprintf(OUT,"x%d ",NumberOfInstances);
-	      if(ImplicitPower) fprintf(OUT,"vdd vss ");
 	      if(sscanf(line,"INSTANCE %s:",InstanceName)==1) {
 	         CleanupString(InstanceName);
+
+		 /* Search library records for subcircuit */
+		 if (subcktlib != NULL) {
+		    for (tsub = subcktlib; tsub; tsub = tsub->next) {
+		       if (!strcasecmp(InstanceName, tsub->name))
+			  break;
+		    }
+		 }
+
+	         if (tsub == NULL) {
+	            if(vddnet == NULL) fprintf(OUT,"vdd ");
+	            if(gndnet == NULL) fprintf(OUT,"vss ");
+	         }
+
 	         while(loc_getline(line, sizeof(line), NETFILE)>1 ) {
 	            if(sscanf(line,"%s :  %s",InstancePortName,InstancePortWire)==2) {
 	               CleanupString(InstancePortWire);
@@ -179,15 +364,44 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower)
 	                     strcpy(InstancePortWire,OutputNodes[i][0]);
 	                  }
 	               }
-	               fprintf(OUT,"%s ",InstancePortWire);
+
+		       if (tsub == NULL)
+	                  fprintf(OUT,"%s ",InstancePortWire);
+		       else {
+			  // Find port name in list
+	                  CleanupString(InstancePortName);
+			  for (tport = tsub->ports; tport; tport = tport->next) {
+			     if (!strcmp(tport->name, InstancePortName)) {
+				sprintf(tport->signal, InstancePortWire);
+				break;
+			     }
+			  }
+			  if (tport == NULL)
+			     /* This will likely screw everything up. . . */
+	                     fprintf(OUT,"%s ",InstancePortWire);
+		       }
 	            }
 	         }
 	      }
+
 	      /* Done with I/O section, add instance name to subckt line */
+
+	      if (tsub != NULL) {
+		 /* Write out all ports in proper order */
+		 for (tport = tsub->ports; tport; tport = tport->next) {
+		    if (tport->signal[0] == '\0')
+		       fprintf(OUT,"%d ", uniquenode++);
+		    else
+		       fprintf(OUT,"%s ", tport->signal);
+		 }
+	      }
               fprintf(OUT,"%s\n",InstanceName);
 	   } 
 	}
 }
+
+/*--------------------------------------------------------------*/
+/*--------------------------------------------------------------*/
 
 void CleanupString(char text[LengthOfNodeName])
 {
@@ -213,7 +427,6 @@ void CleanupString(char text[LengthOfNodeName])
 	   }
 	}
 }
-
 
 /*--------------------------------------------------------------*/
 /*C getnumber - gets number pointed by strpntbegin		*/
@@ -243,7 +456,7 @@ float getnumber(char *strpntbegin)
                return DBL_MAX;
             }
         }
-/*if(*strpntbegin =='m') */
+
         switch( magn1 ) {
         case 'f':
            number *= 1e-15;
@@ -274,26 +487,6 @@ float getnumber(char *strpntbegin)
         return number;
 }          
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*--------------------------------------------------------------*/
 /*C loc_getline: read a line, return length		*/
 /*								*/
@@ -315,9 +508,6 @@ int loc_getline( char s[], int lim, FILE *fp)
 	return i;
 }
 
-
-
-
 /*--------------------------------------------------------------*/
 /*C helpmessage - tell user how to use the program		*/
 /*								*/
@@ -325,7 +515,6 @@ int loc_getline( char s[], int lim, FILE *fp)
         RETURNS: 1 to OS
    SIDE EFFECTS: 
 \*--------------------------------------------------------------*/
-
 
 void helpmessage()
 {
@@ -341,5 +530,4 @@ void helpmessage()
 
     exit( EXIT_HELP );	
 } /* helpmessage() */
-
 

@@ -3,7 +3,8 @@
 #
 
 # Main compiler arguments
-CFLAGS = -g -O2
+# CFLAGS = -g -O2
+CFLAGS = -g
 DEFS = -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SETENV=1 -DHAVE_PUTENV=1 -DTCLSH_PATH=\"tclsh\" -DQFLOW_MAGIC_PATH=\"/usr/local/bin/magic\" -DQFLOW_QROUTER_PATH=\"/usr/local/bin/qrouter\" -DQFLOW_TWRC_PATH=\"/home/tim/src/timberwolf-6.3/.twrc\" -DQFLOW_SIS_PATH=\"/usr/local/bin/sis\" -DQFLOW_VIS_PATH=\"/usr/local/bin/vis\"
 LIBS = 
 LDFLAGS = 

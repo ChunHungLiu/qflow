@@ -130,7 +130,8 @@ ${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}_buf.bdnet \
 ${bindir}/BDnet2Verilog -p ${rootname}_buf.bdnet > ${rootname}.rtlnopwr.v
 
 echo "Running BDnet2BSpice."
-${bindir}/BDnet2BSpice ${rootname}_buf.bdnet > ${rootname}_buf.spc
+${bindir}/BDnet2BSpice ${rootname}_buf.bdnet -p ${vddnet} -g ${gndnet} \
+	-l ${techdir}/${spicefile} > ${rootname}_buf.spc
 
 #-------------------------------------------------------------------------
 # Clean up after myself!

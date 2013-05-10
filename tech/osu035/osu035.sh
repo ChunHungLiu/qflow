@@ -8,6 +8,10 @@
 
 set leffile=osu035_stdcells.lef
 
+# The SPICE netlist containing subcell definitions for all the standard cells
+
+set spicefile=osu035_stdcells.sp
+
 # If there is another LEF file containing technology information
 # that is separate from the file containing standard cell macros,
 # set this.  Otherwise, leave it defined as an empty string.
