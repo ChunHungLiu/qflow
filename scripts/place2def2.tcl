@@ -314,6 +314,16 @@ puts stdout "Limits: xbot = $xbot ybot = $ybot xtop = $xtop ytop = $ytop"
 set cellxbot [expr $cellxbot - $offsetx]
 set cellybot [expr $cellybot - $offsety]
 
+# Also adjust core values to put lower left corner at offsetx,offsety
+
+set corextop [expr $offsetx + $corextop - $corexbot]
+set coreytop [expr $offsety + $coreytop - $coreybot]
+set corexbot $offsetx
+set coreybot $offsety
+
+puts stdout "Core values: $corexbot $coreybot $corextop $coreytop"
+puts stdout "Offsets: $offsetx $offsety"
+
 # Expand die dimensions by a half pitch in all directions, then snap to
 # the track grid (assumes that the origin (0, 0) is a track position)
 

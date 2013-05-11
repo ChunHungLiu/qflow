@@ -28,8 +28,8 @@ set flopcell=DFFPOSX1	;# Standard positive-clocked DFF, no set or reset
 set flopsetreset=DFFSR	;# DFF with both set and clear
 set setpin=S		;# The name of the set pin on DFFs
 set resetpin=R		;# The name of the clear/reset pin on DFFs
-set setpininvert=0	;# Set this to 1 if the set pin is inverted (!set)
-set resetpininvert=0	;# Set this to 1 if the reset pin is inverted (!reset)
+set setpininvert=1	;# Set this to 1 if the set pin is inverted (!set)
+set resetpininvert=1	;# Set this to 1 if the reset pin is inverted (!reset)
 set floppinout=Q	;# Name of the output pin on DFFs
 
 set bufcell=BUFX2	;# Minimum drive strength buffer cell
