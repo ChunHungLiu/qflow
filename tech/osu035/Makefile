@@ -12,7 +12,7 @@ INSTALL = /usr/bin/install -c
 QFLOW_LIB_DIR = /usr/local/share/qflow
 
 TECH_FILES = osu035.genlib osu035.par osu035_stdcells.lef osu035.sh gate.cfg
-TECH_FILES += osu035_stdcells.sp osu035.magicrc osu035.prm
+TECH_FILES += osu035_stdcells.sp osu035.magicrc osu035.prm SCN4M_SUBM.20.tech
 
 TECHINSTALL = ${QFLOW_LIB_DIR}/tech
 

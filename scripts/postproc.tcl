@@ -171,19 +171,23 @@ while {1} {
 	     set resetnet [lindex $flopresetnet $idx]
 	     if {$setpininvert == 1} {
 	        set setresetnet pp_${resetnet}bar
+		set setpinstatic ${vddnet}
 	     } else {
 	        set setresetnet ${resetnet}
+		set setpinstatic ${gndnet}
 	     }
 	     if {$resetpininvert == 1} {
 	        set resetresetnet pp_${resetnet}bar
+		set resetpinstatic ${vddnet}
 	     } else {
 	        set resetresetnet ${resetnet}
+		set resetpinstatic ${gndnet}
 	     }
 	     if {$flopt == 1} {
 		if {[catch {set $flopset}]} {
 		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
 		   set srline "\t\"${setpin}\" : \"${setresetnet}\";\
-				\n\t\"${resetpin}\" : \"${gndnet}\";"
+				\n\t\"${resetpin}\" : \"${resetpinstatic}\";"
 		} else {
 		   set line "INSTANCE \"${flopset}\":\"physical\""
 		   set srline "\t\"${setpin}\" : \"${setresetnet}\""
@@ -191,7 +195,7 @@ while {1} {
 	     } elseif {$flopt == 0} {
 		if {[catch {set $flopreset}]} {
 		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
-		   set srline "\t\"${setpin}\" : \"${gndnet}\";\
+		   set srline "\t\"${setpin}\" : \"${setpinstatic}\";\
 				\n\t\"${resetpin}\" : \"${resetresetnet}\";"
 		} else {
 		   set line "INSTANCE \"${flopreset}\":\"physical\""
