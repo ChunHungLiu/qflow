@@ -22,6 +22,10 @@
 /*    will be stitched together at the end, and the	*/
 /*    original source file will be used to determine	*/
 /*    which pins are the I/O of the whole module.	*/
+/*							*/
+/* 4) Because VIS does not understand the "parameter"	*/
+/*    statement, parameters substitutions are done by	*/
+/*    vpreproc.						*/
 /*------------------------------------------------------*/
 
 #define DEBUG 1
@@ -73,6 +77,16 @@ typedef struct _module {
    sigact *clocklist;		// List of clock signals
    sigact *resetlist;		// List of reset signals
 } module;
+
+// Parameter data structure
+
+typedef struct _parameter *parameterp;
+
+typedef struct _parameter {
+   parameterp next;
+   char *name;
+   char *value;
+} parameter;
 
 // States during reading
 #define  HEADER_STUFF	0x0001		// Before reading "module"
@@ -231,6 +245,44 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
    }
 }
 
+/*------------------------------------------------------*/
+/* Copy a line of code with parameter substitutions 	*/
+/*------------------------------------------------------*/
+
+void
+paramcpy(char *dest, char *source, parameter *params)
+{
+   char temp[1024];
+   char *sptr, *dptr, *vptr;
+   int plen;
+   parameter *pptr;
+
+   strcpy(dest, source);
+
+   for (pptr = params; pptr; pptr = pptr->next) {
+      strcpy(temp, dest);
+      plen = strlen(pptr->name);
+      sptr = temp;
+      dptr = dest;
+      while (*sptr != '\0') {
+	 if (!strncmp(sptr, pptr->name, plen)) {
+	    vptr = pptr->value;
+	    while (*vptr != '\0') {
+	       *dptr++ = *vptr++;
+	    }
+	    sptr += plen;
+	 }
+	 else
+	    *dptr++ = *sptr++;
+      }
+      *dptr = '\0';
+   }
+}
+
+/*------------------------------------------------------*/
+/* Main verilog preprocessing code			*/
+/*------------------------------------------------------*/
+
 int
 main(int argc, char *argv[])
 {
@@ -250,6 +302,7 @@ main(int argc, char *argv[])
     sigact *clocksig;
     sigact *resetsig, *testreset, *testsig;
     vector *initvec, *testvec, *newvec;
+    parameter *params = NULL;
 
     int state, nextstate;
     int line_num;
@@ -296,11 +349,15 @@ main(int argc, char *argv[])
 
     while (1) {		/* Read continuously and break loop when input is exhausted */
 
-	strcpy(linecopy, linebuf);	// Keep a copy of the line we're processing
+	paramcpy(linecopy, linebuf, params);
+	// strcpy(linecopy, linebuf);	// Keep a copy of the line we're processing
 
 	token = strtok(fptr, toklist);
 
 	while (token != NULL) {
+
+	    /* State-independent processing */
+
 	    if (!strncmp(token, "/*", 2)) {
 		state |= COMMENT;
 	    }
@@ -312,8 +369,51 @@ main(int argc, char *argv[])
 		    break;	// Forget rest of line and read next line
 		}
 	    }
+	    if (!strcmp(token, "parameter")) {
+		toklist = " \t\n=";
+		/* Get parameter name */
+	        token = strtok(NULL, toklist);
+		if (token != NULL) {
+		   parameter *newparam = (parameter *)malloc(sizeof(parameter));
+		   newparam->name = strdup(token);
+		   newparam->next = NULL;
 
-	    /* Main processing here */
+		   /* Get parameter value */
+	           token = strtok(NULL, toklist);
+		   newparam->value = strdup(token);
+
+		   /* Sort tokens by size to avoid substituting	part	*/
+		   /* of a parameter (e.g., "START" and "START1" should	*/
+		   /* not be ambiguous!)				*/
+
+		   if (params == NULL)
+		      params = newparam;
+		   else {
+		      parameter *pptr, *lptr;
+		      lptr = NULL;
+		      for (pptr = params; pptr; pptr = pptr->next) {
+			 if (strlen(pptr->name) < strlen(newparam->name)) {
+			    if (lptr == NULL) {
+			       newparam->next = params;
+			       params = newparam;
+			    }
+			    else {
+			       newparam->next = lptr->next;
+			       lptr->next = newparam;
+			    }
+			    break;
+			 }
+			 lptr = pptr;
+		      }
+		      if (pptr == NULL) lptr->next = newparam;
+		   }
+		}
+		suspend = 2;		/* Don't output this line */
+		break;			/* No further processing on this line */
+	    }
+
+	    /* State-dependent processing */
+
 	    switch (state) {
 		case HEADER_STUFF:
 		    if (!strcmp(token, "module")) {
