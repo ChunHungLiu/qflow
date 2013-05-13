@@ -349,8 +349,8 @@ main(int argc, char *argv[])
 
     while (1) {		/* Read continuously and break loop when input is exhausted */
 
-	paramcpy(linecopy, linebuf, params);
-	// strcpy(linecopy, linebuf);	// Keep a copy of the line we're processing
+	paramcpy(linecopy, linebuf, params);	// Substitute parameters
+	strcpy(linebuf, linecopy);	// Keep a copy of the line we're processing
 
 	token = strtok(fptr, toklist);
 
