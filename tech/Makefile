@@ -16,6 +16,11 @@ TECH_DIRS = osu035
 TECHINSTALL = ${QFLOW_LIB_DIR}/tech
 
 all:
+	@echo "Making all in tech directories"
+	for target in $(TECH_DIRS); do \
+	   cd $$target ;\
+	   $(MAKE) all ;\
+	done
 
 install:
 	@echo "Installing built-in tech files"

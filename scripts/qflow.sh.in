@@ -215,6 +215,15 @@ if ( $actions == 0 ) then
 endif
 
 chmod u+x ${execfile}
+
+# Drop the magic startup file into the layout directory if it does not exist
+if (-d ${layoutdir}) then
+   if (!(-f ${layoutdir}/.magicrc)) then
+      cp ${techdir}/${magicrc} ${layoutdir}/.magicrc
+   endif
+endif
+
+# Execute the script file to run any command that has not been commented out
 exec ${execfile}
 
 exit 0

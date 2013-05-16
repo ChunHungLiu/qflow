@@ -16,9 +16,16 @@ TECH_FILES += osu035_stdcells.sp osu035.magicrc osu035.prm SCN4M_SUBM.20.tech
 
 TECHINSTALL = ${QFLOW_LIB_DIR}/tech
 
-all:
+# Substitute the target qflow tech directory name in .magicrc so that magic
+# can find the OSU035 techfile
 
-install:
+all: osu035.magicrc.in
+	$(RM) -f osu035.magicrc
+	cat osu035.magicrc.in | sed -e \
+		'/QFLOW_LIB_DIR/s#QFLOW_LIB_DIR#$(QFLOW_LIB_DIR)#' \
+		> osu035.magicrc
+
+install: ${TECH_FILES}
 	@echo "Installing osu035 tech files"
 	$(INSTALL) -d $(TECHINSTALL)/osu035
 	for target in $(TECH_FILES); do \
@@ -26,6 +33,7 @@ install:
 	done
 
 clean:
+	$(RM) -f osu035.magicrc
 
 uninstall:
 
