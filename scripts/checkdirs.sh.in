@@ -58,7 +58,7 @@ endif
 
 set techname=${argv[1]:al}
 if ($#argv == 2) then
-   set projectpath=${argv[2]:al}
+   set projectpath=${argv[2]}
 else
    set projectpath=`pwd`
 endif
