@@ -736,7 +736,7 @@ main(int argc, char *argv[])
 			     // This is not a reset signal assignment, so we
 			     // should cancel the suspend state.
 			     state &= ~IN_IFELSE;
-			     suspend = 2;
+			     suspend = 0;
 			  }
 		       }
 		       else {
