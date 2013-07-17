@@ -633,6 +633,9 @@ main(int argc, char *argv[])
 		    else if (!strcmp(token, "or")) {
 		       // ignore this
 		    }
+		    else if (!strcmp(token, "@")) {
+		       // ignore this, too
+		    }
 		    else {
 		       if (edgetype == POSEDGE || edgetype == NEGEDGE) {
 		          /* Parse this signal */

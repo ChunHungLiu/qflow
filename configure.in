@@ -105,6 +105,25 @@ AC_ARG_WITH(timberwolf,
 AC_DEFINE_UNQUOTED(QFLOW_TWRC_PATH, "$QFLOW_TWRC_PATH")
 QFLOW_TW_PATH=${ac_cv_path_QFLOW_TWRC_PATH%/.twrc}
 
+dnl Path to Odin-II
+
+AC_ARG_WITH(odin_II,
+[  --with-odin_II=DIR		path to odin_II.exe], [
+   if test -d "$withval"; then
+      QFLOW_ODIN_DIR=$withval
+   elif test -f "$withval"; then
+      # Path includes odin_II executable;  strip this off
+      QFLOW_ODIN_DIR=${withval%/odin_II.exe}
+   else
+      QFLOW_ODIN_DIR=${PATH}
+   fi
+   AC_PATH_PROG(QFLOW_ODIN_PATH, odin_II.exe, , $QFLOW_ODIN_DIR)
+], [
+   AC_PATH_PROG(QFLOW_ODIN_PATH, odin_II.exe, , )])
+
+AC_DEFINE_UNQUOTED(QFLOW_ODIN_PATH, "$QFLOW_ODIN_PATH")
+QFLOW_ODIN_PATH=${ac_cv_path_QFLOW_ODIN_PATH%/odin_II.exe}
+
 dnl Path to SIS
 
 AC_ARG_WITH(sis,
@@ -221,12 +240,29 @@ AC_ARG_WITH(projectroot,
    QFLOW_PROJECT_ROOT=.
 ])
 
+# If only Odin-II or VIS was found, that becomes the default
+# verilog parser.  If both are found, then Odin-II becomes
+# the default parser and VIS may be substituted with the
+# appropriate option to qflow.
+
+if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+   if test "x${ac_cv_path_QFLOW_VIS_PATH}" != "x"; then
+      QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_VIS_PATH}
+   else
+      QFLOW_DEFAULT_PARSER=NONE
+   fi
+else
+   QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_ODIN_PATH}
+fi
+
 dnl AC_SUBST(QFLOW_QROUTER_PATH)
 dnl AC_SUBST(QFLOW_MAGIC_PATH)
 dnl AC_SUBST(QFLOW_TWRC_PATH)
 dnl AC_SUBST(QFLOW_SIS_PATH)
 dnl AC_SUBST(QFLOW_VIS_PATH)
+dnl AC_SUBST(QFLOW_ODIN_PATH)
 AC_SUBST(QFLOW_TW_PATH)
+AC_SUBST(QFLOW_DEFAULT_PARSER)
 
 AC_SUBST(QFLOW_BIN_DIR)
 AC_SUBST(QFLOW_LIB_DIR)
@@ -264,9 +300,23 @@ else
 fi
 
 if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
-   echo "ERROR: VIS not found.  Use --with-vis=<DIR>"
+   if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+      echo "ERROR: VIS not found.  Use --with-vis=<DIR>"
+   else
+      echo "NOTE: VIS not found, using odin_II for parser.  Use --with-vis=<DIR>"
+   fi
 else
    echo "Using VIS verilog parsing tool at: ${ac_cv_path_QFLOW_VIS_PATH}"
+fi
+
+if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+   if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
+      echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
+   else
+      echo "NOTE: odin_II not found, using VIS for parser.  Use --with-odin_II=<DIR>"
+   fi
+else
+   echo "Using odin_II verilog parsing tool at: ${ac_cv_path_QFLOW_ODIN_PATH}"
 fi
 
 if test "x${ac_cv_path_QFLOW_SIS_PATH}" == "x"; then

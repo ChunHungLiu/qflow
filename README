@@ -22,14 +22,21 @@ The ./configure needs arguments for each tool of the tool
 chain that is not in the standard search path.  Qflow will
 need to be able to find the following tools:
 
-	vis
 	sis
 	TimberWolf
 	qrouter
 	magic
 
-All tools except TimberWolf typically install in a standard
-location that is in the normal user path.
+and one or more of the following:
+
+	vis
+	odin-ii
+
+All tools except TimberWolf and odin-ii typically install in a
+standard location that is in the normal user path.  TimberWolf
+typically compiles into its own source path, and odin-ii may
+either do the same, or it may be compiled as part of the tool
+set "vtr".
 
 --------------------------------------------------------------
 "qflow" is the original verilog digital flow from

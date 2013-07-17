@@ -576,9 +576,11 @@ QFLOW_SYNTH_DIR
 QFLOW_SOURCE_DIR
 QFLOW_LIB_DIR
 QFLOW_BIN_DIR
+QFLOW_DEFAULT_PARSER
 QFLOW_TW_PATH
 QFLOW_VIS_PATH
 QFLOW_SIS_PATH
+QFLOW_ODIN_PATH
 QFLOW_TWRC_PATH
 QFLOW_QROUTER_PATH
 QFLOW_MAGIC_PATH
@@ -654,6 +656,7 @@ with_tclsh
 with_magic
 with_qrouter
 with_timberwolf
+with_odin_II
 with_sis
 with_vis
 with_libdir
@@ -1295,6 +1298,7 @@ Optional Packages:
   --with-magic=DIR		path to magic-8.0
   --with-qrouter=DIR		path to qrouter
   --with-timberwolf=DIR		path to TimberWolf .twrc file
+  --with-odin_II=DIR		path to odin_II.exe
   --with-sis=DIR		path to SIS executable
   --with-vis=DIR		path to VIS executable
   --with-libdir=DIR			path to qflow runtime files
@@ -4063,6 +4067,111 @@ QFLOW_TW_PATH=${ac_cv_path_QFLOW_TWRC_PATH%/.twrc}
 
 
 
+# Check whether --with-odin_II was given.
+if test "${with_odin_II+set}" = set; then :
+  withval=$with_odin_II;
+   if test -d "$withval"; then
+      QFLOW_ODIN_DIR=$withval
+   elif test -f "$withval"; then
+      # Path includes odin_II executable;  strip this off
+      QFLOW_ODIN_DIR=${withval%/odin_II.exe}
+   else
+      QFLOW_ODIN_DIR=${PATH}
+   fi
+   # Extract the first word of "odin_II.exe", so it can be a program name with args.
+set dummy odin_II.exe; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ODIN_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ODIN_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ODIN_PATH="$QFLOW_ODIN_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $QFLOW_ODIN_DIR
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ODIN_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ODIN_PATH=$ac_cv_path_QFLOW_ODIN_PATH
+if test -n "$QFLOW_ODIN_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ODIN_PATH" >&5
+$as_echo "$QFLOW_ODIN_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+
+else
+
+   # Extract the first word of "odin_II.exe", so it can be a program name with args.
+set dummy odin_II.exe; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ODIN_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ODIN_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ODIN_PATH="$QFLOW_ODIN_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ODIN_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ODIN_PATH=$ac_cv_path_QFLOW_ODIN_PATH
+if test -n "$QFLOW_ODIN_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ODIN_PATH" >&5
+$as_echo "$QFLOW_ODIN_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+fi
+
+
+cat >>confdefs.h <<_ACEOF
+#define QFLOW_ODIN_PATH "$QFLOW_ODIN_PATH"
+_ACEOF
+
+QFLOW_ODIN_PATH=${ac_cv_path_QFLOW_ODIN_PATH%/odin_II.exe}
+
+
+
 # Check whether --with-sis was given.
 if test "${with_sis+set}" = set; then :
   withval=$with_sis;
@@ -4392,6 +4501,22 @@ else
 
    QFLOW_PROJECT_ROOT=.
 
+fi
+
+
+# If only Odin-II or VIS was found, that becomes the default
+# verilog parser.  If both are found, then Odin-II becomes
+# the default parser and VIS may be substituted with the
+# appropriate option to qflow.
+
+if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+   if test "x${ac_cv_path_QFLOW_VIS_PATH}" != "x"; then
+      QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_VIS_PATH}
+   else
+      QFLOW_DEFAULT_PARSER=NONE
+   fi
+else
+   QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_ODIN_PATH}
 fi
 
 
@@ -5611,9 +5736,23 @@ else
 fi
 
 if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
-   echo "ERROR: VIS not found.  Use --with-vis=<DIR>"
+   if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+      echo "ERROR: VIS not found.  Use --with-vis=<DIR>"
+   else
+      echo "NOTE: VIS not found, using odin_II for parser.  Use --with-vis=<DIR>"
+   fi
 else
    echo "Using VIS verilog parsing tool at: ${ac_cv_path_QFLOW_VIS_PATH}"
+fi
+
+if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+   if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
+      echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
+   else
+      echo "NOTE: odin_II not found, using VIS for parser.  Use --with-odin_II=<DIR>"
+   fi
+else
+   echo "Using odin_II verilog parsing tool at: ${ac_cv_path_QFLOW_ODIN_PATH}"
 fi
 
 if test "x${ac_cv_path_QFLOW_SIS_PATH}" == "x"; then

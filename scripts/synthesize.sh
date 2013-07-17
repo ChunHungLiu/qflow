@@ -22,10 +22,9 @@ if ($#argv < 2) then
 endif
 
 # Split out options from the main arguments
-set argline=`getopt "c:b:f:nx" $argv[1-]`
+set argline=`getopt "c:b:f:v:nx" $argv[1-]`
 
 # Corrected 9/9/08; quotes must be added or "-n" disappears with "echo".
-set options=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $1}'`
 set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
 set argc=`echo $cmdargs | wc -w`
 
@@ -38,13 +37,36 @@ else
    echo	      <project_path> is the name of the project directory containing
    echo			a file called qflow_vars.sh.
    echo	      <source_name> is the root name of the verilog file, and
-   echo	      [options] are passed verbatim to the AddIOToBDNet program.
+   echo	  options:
+   echo	      -v <parser> forces use of a specific verilog parser,
+   echo			providing the full path to the parser.  Otherwise, VIS
+   echo			will be used, as it is expected to be installed in a
+   echo			standard search path.
    exit 1
 endif
 
 set projectpath=$argv1
 set sourcename=$argv2
 set rootname=${sourcename:h}
+
+set parser=vis
+
+set options=""
+eval set argv=\($argline:q\)
+while ($#argv > 0)
+   switch (${1:q})
+      case -v:
+	 shift
+         set parser=${1:q}
+         breaksw
+      case --:
+         break
+      default:
+	 set options="$options ${1:q}"
+	 breaksw
+   endsw
+   shift
+end
 
 # This script is called with the first argument <project_path>, which should
 # have file "qflow_vars.sh".  Get all of our standard variable definitions
@@ -74,33 +96,55 @@ ${bindir}/vpreproc ${rootname}.v
 # that VIS can handle, and write it back to the same
 # filename as was created by vpreproc
 
-${scriptdir}/vispreproc.tcl ${rootname}_tmp.v
-if ( -f ${rootname}_tmp_vis.v ) then
-   mv ${rootname}_tmp_vis.v ${rootname}_tmp.v
-endif
+if ("x$parser" == "xvis") then
 
-${bindir}/vis >>& ${synthlog} << EOF
+   ${scriptdir}/vispreproc.tcl ${rootname}_tmp.v
+   if ( -f ${rootname}_tmp_vis.v ) then
+      mv ${rootname}_tmp_vis.v ${rootname}_tmp.v
+   endif
+
+   ${bindir}/vis >>& ${synthlog} << EOF
 read_verilog ${rootname}_tmp.v
 write_blif ${rootname}.blif
 quit
 EOF
 
-# /home/tim/src/odin_ii/ODIN_II/odin_II.exe \
-#	-V ${sourcedir}/${rootname}.v -o ${sourcedir}/${rootname}.blif >>& ${synthlog}
+   #---------------------------------------------------------------------
+   # Check for VIS compile-time errors
+   #---------------------------------------------------------------------
 
-#---------------------------------------------------------------------
-# Check for verilog compile-time errors
-#---------------------------------------------------------------------
+   set errline=`cat ${synthlog} | grep "No file has been read in" | wc -l`
+   if ( $errline == 1 ) then
+      echo ""
+      echo "Verilog compile errors occurred:"
+      echo "See file ${synthlog} for details."
+      echo "----------------------------------"
+      cat ${synthlog} | grep "^line"
+      echo ""
+      exit 1
+   endif
 
-set errline=`cat ${synthlog} | grep "No file has been read in" | wc -l`
-if ( $errline == 1 ) then
-   echo ""
-   echo "Verilog compile errors occurred:"
-   echo "See file ${synthlog} for details."
-   echo "----------------------------------"
-   cat ${synthlog} | grep "^line"
-   echo ""
-   exit 1
+else
+
+   # "$parser" should be a pointer to the odin_II executable
+
+   eval $parser -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
+
+   #---------------------------------------------------------------------
+   # Check for Odin-II compile-time errors
+   #---------------------------------------------------------------------
+
+   set errline=`cat ${synthlog} | grep "Odin has decided you have failed" | wc -l`
+   if ( $errline == 1 ) then
+      echo ""
+      echo "Verilog compile errors occurred:"
+      echo "See file ${synthlog} for details."
+      echo "----------------------------------"
+      cat ${synthlog} | grep "^line"
+      echo ""
+      exit 1
+   endif
+
 endif
 
 ${bindir}/sis >> ${synthlog} << EOF
@@ -155,12 +199,23 @@ endif
 # Switch to synthdir for processing of the BDNET netlist
 cd ${synthdir}
 
-# NOTE:  CleanUpBDnet is only to be used with SIS/VIS flow.
-# Other flows create their own unique problems needing cleanup.
+if ("x$parser" == "xvis") then
 
-echo "Running CleanUpBDnet"
-${bindir}/CleanUpBDnet -f -b ${rootname}.bdnet > ${rootname}_tmp.bdnet
-#cp ${synthdir}/${rootname}.bdnet ${synthdir}/${rootname}_tmp.bdnet
+   # NOTE:  CleanUpBDnet is only to be used with SIS/VIS flow.
+   echo "Running CleanUpBDnet"
+   ${bindir}/CleanUpBDnet -f -b ${rootname}.bdnet > ${rootname}_tmp.bdnet
+
+else
+
+   # Odin_II appends "top^" to top-level signals, we want to remove these.
+   # It also replaces vector indexes with "~" which we want to recast to
+   # <>
+   echo "Cleaning Up BDnet file syntax"
+   cat ${rootname}.bdnet | sed -e "s/top^//g" \
+	-e "s/~\([0-9]*\)/<\1>/g" \
+	> ${rootname}_tmp.bdnet
+
+endif
 
 #---------------------------------------------------------------------
 # Add initial conditions with set and reset flops
