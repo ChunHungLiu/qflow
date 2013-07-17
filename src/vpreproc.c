@@ -308,6 +308,7 @@ main(int argc, char *argv[])
     int line_num;
     int start, end, ival, i, j;
     int blocklevel;
+    int no_new_token;
     int condition;
     char edgetype;
     char suspend;		/* When =1, suspend output */
@@ -343,6 +344,7 @@ main(int argc, char *argv[])
     state = HEADER_STUFF;
     suspend = (char)0;
     line_num = 1;
+    no_new_token = 0;	/* If 1, don't move to next token */
     blocklevel = 0;	/* Nesting of begin...end blocks */
     condition = -1;
     toklist = " \t\n";	/* Default token list at beginning (state HEADER_STUFF) */
@@ -352,7 +354,9 @@ main(int argc, char *argv[])
 	paramcpy(linecopy, linebuf, params);	// Substitute parameters
 	strcpy(linebuf, linecopy);	// Keep a copy of the line we're processing
 
-	token = strtok(fptr, toklist);
+	if (no_new_token == 0)
+	   token = strtok(fptr, toklist);
+	no_new_token = 0;
 
 	while (token != NULL) {
 
@@ -605,6 +609,21 @@ main(int argc, char *argv[])
 			}
 			suspend = 1;
 		    }
+		    else if (!strcmp(token, "if")) {
+			state &= ~SENS_LIST;
+			state |= IN_CLKBLOCK | IN_IFELSE;
+			testreset = NULL;
+			resetsig = NULL;
+			blocklevel++;
+
+			// Regenerate always @() line with posedge clock only,
+			// no reset, and no "begin" line
+			if (ftmp != NULL && clocksig != NULL) {
+			    fprintf(ftmp, "always @( posedge %s ) \n",
+					clocksig->name);
+			}
+			suspend = 1;
+		    }
 		    else if (!strcmp(token, "posedge")) {
 		        edgetype = POSEDGE;
 		    }
@@ -615,22 +634,32 @@ main(int argc, char *argv[])
 		       // ignore this
 		    }
 		    else {
-		       /* Parse this signal */
-		       if (clocksig == NULL) {
-			  clocksig = (sigact *)malloc(sizeof(sigact));
-			  clocksig->next = topmod->clocklist;
-			  topmod->clocklist = clocksig;
-			  clocksig->name = strdup(token);
-			  clocksig->edgetype = edgetype;
+		       if (edgetype == POSEDGE || edgetype == NEGEDGE) {
+		          /* Parse this signal */
+		          if (clocksig == NULL) {
+			     clocksig = (sigact *)malloc(sizeof(sigact));
+			     clocksig->next = topmod->clocklist;
+			     topmod->clocklist = clocksig;
+			     clocksig->name = strdup(token);
+			     clocksig->edgetype = edgetype;
+		          }
+		          else {
+			     resetsig = (sigact *)malloc(sizeof(sigact));
+			     resetsig->next = topmod->resetlist;
+			     topmod->resetlist = resetsig;
+			     resetsig->name = strdup(token);
+			     resetsig->edgetype = edgetype;
+		          }
+		          if (DEBUG) printf("Adding clock or reset signal \"%s\"\n",
+					token);
 		       }
 		       else {
-			  resetsig = (sigact *)malloc(sizeof(sigact));
-			  resetsig->next = topmod->resetlist;
-			  topmod->resetlist = resetsig;
-			  resetsig->name = strdup(token);
-			  resetsig->edgetype = edgetype;
+			  // This is one of those blocks where a sensitivity
+			  // list is used to make a wire assignment look like
+			  // a register, in defiance of all logic.
+			  state = MAIN_BODY;
+			  suspend = 0;
 		       }
-		       if (DEBUG) printf("Adding clock or reset signal \"%s\"\n", token);
 		    }
 		    break;
 		
@@ -641,7 +670,8 @@ main(int argc, char *argv[])
 		    }
 		    else if (!strcmp(token, "else")) {
 			state |= IN_IFELSE;
-			suspend = 2;		// Pending exit suspended state
+			if (suspend == 1)
+			   suspend = 2;		// Pending exit suspended state
 		    }
 		    break;
 
@@ -653,6 +683,28 @@ main(int argc, char *argv[])
 		    else if (!strcmp(token, "if")) {
 		       /* Ignore "if" in "else if" */
 		    }
+
+		    // An "always" block may contain only if..else
+		    // and omit the "begin" and "end" block delimiters.
+		    // If so, then another "always" or an "endmodule"
+		    // forces the end of the "always" block.
+
+		    else if (!strcmp(token, "always")) {
+			state = MAIN_BODY;
+			no_new_token = 1;
+			blocklevel = 0;
+			break;
+		    } else if (!strcmp(token, "endmodule")) {
+			state = MAIN_BODY;
+			no_new_token = 1;
+			blocklevel = 0;
+			break;
+		    }
+
+		    // Otherwise, the next token should be a statement
+		    // of some sort.  If it's a reset condition assignment,
+		    // break it out of the code.
+
 		    else {	// Pick up RHS/LHS
 		       if ((sptr = strrchr(token, ')')) != NULL) {
 			  *sptr = '\0';
@@ -679,6 +731,12 @@ main(int argc, char *argv[])
 			        else if (!strncmp(token, "!=", 2))
 				   condition = NOT_EQUAL; 
 			     }
+			  }
+			  else {
+			     // This is not a reset signal assignment, so we
+			     // should cancel the suspend state.
+			     state &= ~IN_IFELSE;
+			     suspend = 2;
 			  }
 		       }
 		       else {
@@ -710,6 +768,7 @@ main(int argc, char *argv[])
 			   }
 		       }
 		    }
+
 		    break;
 
 		case (IN_CLKBLOCK | IN_IFELSE | IN_IFBLOCK):
@@ -828,8 +887,12 @@ main(int argc, char *argv[])
 		   toklist = " \t\n[:]";
 		   break;
 
+		case MAIN_BODY:
+		   toklist = " \t\n@(";
+		   break;
+
 		case SENS_LIST:
-		   toklist = " \t\n@()";
+		   toklist = " \t\n()";
 		   break;
 
 		case IN_CLKBLOCK | IN_IFELSE:
@@ -844,7 +907,10 @@ main(int argc, char *argv[])
 		   toklist = " \t\n";
 		   break;
 	    }
-	    token = strtok(NULL, toklist);
+
+	    if (no_new_token == 0)
+	       token = strtok(NULL, toklist);
+	    no_new_token = 0;
 	}
 
 	/* Proceed to next line;  if we get back NULL, we're at EOF */
