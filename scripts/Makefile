@@ -4,7 +4,7 @@
 
 # Main compiler arguments
 CFLAGS = -g -O2
-DEFS = -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SETENV=1 -DHAVE_PUTENV=1 -DTCLSH_PATH=\"tclsh\" -DQFLOW_MAGIC_PATH=\"/usr/local/bin/magic\" -DQFLOW_QROUTER_PATH=\"/usr/local/bin/qrouter\" -DQFLOW_TWRC_PATH=\"/home/tim/src/timberwolf-6.3/.twrc\" -DQFLOW_ODIN_PATH=\"/home/tim/src/odin_ii/ODIN_II/odin_II.exe\" -DQFLOW_SIS_PATH=\"/usr/local/bin/sis\" -DQFLOW_VIS_PATH=\"/usr/local/bin/vis\"
+DEFS = -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SETENV=1 -DHAVE_PUTENV=1 -DTCLSH_PATH=\"tclsh\" -DQFLOW_MAGIC_PATH=\"/usr/local/bin/magic\" -DQFLOW_QROUTER_PATH=\"/usr/local/bin/qrouter\" -DQFLOW_TWRC_PATH=\"/home/tim/src/timberwolf-6.3/.twrc\" -DQFLOW_ODIN_PATH=\"/home/tim/src/vtr/ODIN_II/odin_II.exe\" -DQFLOW_SIS_PATH=\"/usr/local/bin/sis\" -DQFLOW_VIS_PATH=\"/usr/local/bin/vis\"
 LIBS = 
 LDFLAGS = 
 INSTALL = /usr/bin/install -c
@@ -12,7 +12,7 @@ INSTALL = /usr/bin/install -c
 QFLOW_LIB_DIR = /usr/local/share/qflow
 QFLOW_BIN_DIR = /usr/local/bin
 
-DEFAULTPARSER = /home/tim/src/odin_ii/ODIN_II/odin_II.exe
+DEFAULTPARSER = /home/tim/src/vtr/ODIN_II/odin_II.exe
 
 TCL_SCRIPTS = bdnet2cel.tcl clocktree.tcl place2def2.tcl place2lef2.tcl
 TCL_SCRIPTS += place2net2.tcl postproc.tcl setreset.tcl

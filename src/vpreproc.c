@@ -144,6 +144,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
    char *bptr, typechar, *vptr, *fullvec = NULL;
    vector *testvec;
    int locidx;
+   static char *fullname = NULL;
    
    if (idx < 0) locidx = 0;
 
@@ -221,6 +222,10 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
       else {
 	 // Could be a signal name.  If so, check that it has a size
 	 // compatible with idx.
+
+	 char *is_indexed = strchr(vstr, '[');
+	 if (is_indexed) *is_indexed = '\0';
+
 	 for (testvec = topmod->wirelist; testvec != NULL; testvec = testvec->next)
 	    if (!strcmp(testvec->name, vstr))
 	       break;
@@ -233,6 +238,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	       if (!strcmp(testvec->name, vstr))
 	          break;
 	 
+	 if (is_indexed) *is_indexed = '[';	/* Restore index delimiter */
 	 if (testvec == NULL) {
 	    fprintf(stderr, "Line %d: Cannot parse signal name \"%s\" for reset\n",
 			line_num, vstr);
@@ -240,6 +246,78 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	 }
 	 else {
 	    /* To-do:  Need to make sure all vector indices are aligned. . . */
+	    if (idx == 0 && testvec->vector_size == 0) {
+	       return testvec->name;
+	    }
+	    else if (idx >= testvec->vector_size) {
+	       fprintf(stderr, "Line %d:  Vector LHS exceeds dimensions of RHS.\n",
+			line_num);
+	    }
+	    else {
+	       int j, jstart, jend;
+	       char *is_range = NULL;
+
+	       if (is_indexed) {
+		  sscanf(is_indexed + 1, "%d", &jstart);
+		  if ((is_range = strchr(is_indexed + 1, ':')) != NULL) {
+		     sscanf(is_range + 1, "%d", &jend);
+	             if (jstart > jend)
+			j = jend + idx;
+		     else
+			j = jstart + idx;
+
+		     if (testvec->vector_start > testvec->vector_end) {
+			if (j < testvec->vector_end) {
+			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
+					" %d to %d.\n", line_num,
+					testvec->vector_start, testvec->vector_end);
+			   j = testvec->vector_end;
+			}
+			else if (j > testvec->vector_start) {
+			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
+					" %d to %d.\n", line_num,
+					testvec->vector_start, testvec->vector_end);
+			   j = testvec->vector_start;
+			}
+		     }
+		     else {
+			if (j > testvec->vector_end) {
+			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
+					" %d to %d.\n", line_num,
+					testvec->vector_start, testvec->vector_end);
+			   j = testvec->vector_end;
+			}
+			else if (j < testvec->vector_start) {
+			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
+					" %d to %d.\n", line_num,
+					testvec->vector_start, testvec->vector_end);
+			   j = testvec->vector_start;
+			}
+		     }
+		  }
+		  else {
+		     // RHS is a single bit
+		     j = jstart;
+
+		     if (idx != 0) {
+			fprintf(stderr, "Line %d:  Vector LHS is set by single bit"
+				" on RHS.  Padding by repitition.\n", line_num);
+		     }
+		  }
+	       }
+	       else {
+	          if (testvec->vector_start > testvec->vector_end)
+		     j = testvec->vector_end + idx;
+	          else
+		     j = testvec->vector_start + idx;
+	       }
+
+	       if (fullname != NULL) free(fullname);
+	       fullname = (char *)malloc(strlen(testvec->name) + 10);
+	       
+	       sprintf(fullname, "%s<%d>", testvec->name, j);
+	       return fullname;
+	    }
 	 }
       }
    }
@@ -306,12 +384,13 @@ main(int argc, char *argv[])
 
     int state, nextstate;
     int line_num;
-    int start, end, ival, i, j;
+    int start, end, ival, i, j, k;
     int blocklevel;
     int no_new_token;
     int condition;
     char edgetype;
     char suspend;		/* When =1, suspend output */
+    char multidomain;
  
     /* Only one argument, which is the source filename */
 
@@ -347,6 +426,7 @@ main(int argc, char *argv[])
     no_new_token = 0;	/* If 1, don't move to next token */
     blocklevel = 0;	/* Nesting of begin...end blocks */
     condition = -1;
+    multidomain = 0;
     toklist = " \t\n";	/* Default token list at beginning (state HEADER_STUFF) */
 
     while (1) {		/* Read continuously and break loop when input is exhausted */
@@ -676,6 +756,10 @@ main(int argc, char *argv[])
 			if (suspend == 1)
 			   suspend = 2;		// Pending exit suspended state
 		    }
+		    else if (!strcmp(token, "end")) {
+			state = MAIN_BODY;	// Exit "always" block
+			blocklevel--;		// Blocklevel goes back to zero
+		    }
 		    break;
 
 		case (IN_CLKBLOCK | IN_IFELSE):
@@ -790,14 +874,20 @@ main(int argc, char *argv[])
 			blocklevel++;
 		    }
 		    else if (testreset != NULL && suspend == 1) {
+
 			// This is a signal to add to init list.  Parse LHS, RHS
 			if (initvec == NULL) {
+
+			   // Remove any trailing index range from token
+			   char *is_indexed = strchr(token, '[');
+			   if (is_indexed != NULL) *is_indexed = '\0';
+
 			   for (testvec = topmod->reglist; testvec != NULL;
 					testvec = testvec->next) {
-			      if (!strncmp(testvec->name, token, strlen(testvec->name)))
-				 if (!isalnum(*(token + strlen(testvec->name))))
-				   break;
+			      if (!strcmp(testvec->name, token))
+				 break;
 			   }
+			   if (is_indexed) *is_indexed = '[';
 			   if (testvec == NULL) {
 			      fprintf(stderr, "Error, line %d:  Reset condition is not an"
 					" assignment to a known registered signal.\n",
@@ -820,6 +910,7 @@ main(int argc, char *argv[])
 			      if (DEBUG) printf("Reset \"%s\" to \"%s\"\n",
 					initvec->name, token);
 			      j = initvec->vector_start;
+
 			      if ((bptr = parse_bit(line_num, topmod, token, j)) != NULL) {
 
 				 // NOTE:  The finit file uses signal<idx> notation
@@ -932,5 +1023,49 @@ main(int argc, char *argv[])
     /* Done! */
 
     fclose(fsource);
+
+    /* Next step:  Handling multiple clock domains.			*/
+    /* First, determine if there is a need for splitting up the file.	*/
+    /* If not, then we're done.						*/
+
+    /* (1) Is there more than one clock domain?				*/
+
+    if (topmod->clocklist && (topmod->clocklist->next != NULL)) {
+	sigact *clocklist;
+	multidomain = 1;
+	fprintf(stderr, "WARNING: System has multiple clock domains: ");
+	for (clocklist = topmod->clocklist; clocklist != NULL; clocklist =
+		clocklist->next) {
+	    fprintf(stderr, "%s ", clocklist->name);
+	}
+	fprintf(stderr, "\n");
+	fprintf(stderr, "This condition is not handled by the preprocessor!\n");
+    }
+
+    /* (2) If there is only one clock domain, is the clock signal an	*/
+    /*	   assignment, or a system input?				*/
+
+    if (multidomain == 0 && topmod->clocklist) {
+	char *clockname = topmod->clocklist->name;
+	vector *clknet = topmod->iolist;
+	while (clknet != NULL) {
+	    if (clknet->vector_size == 0) {
+		if (!strcmp(clknet->name, clockname))
+		    break;
+	    }
+	    else {
+		if (!strncmp(clknet->name, clockname, strlen(clknet->name)))
+		    break;
+	    }
+	    clknet = clknet->next;
+	}
+	if (clknet == NULL) {
+	    /* Clock was not found in the I/O list */
+	    multidomain = 1;
+	    fprintf(stderr, "WARNING: Clock net %s is an assigned value.\n", clockname);
+	    fprintf(stderr, "This condition is not handled by the preprocessor!\n");
+	}
+    }
+
     exit(0);
 }
