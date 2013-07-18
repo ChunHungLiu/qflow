@@ -374,7 +374,7 @@ main(int argc, char *argv[])
 		}
 	    }
 	    if (!strcmp(token, "parameter")) {
-		toklist = " \t\n=";
+		toklist = " \t\n=;";
 		/* Get parameter name */
 	        token = strtok(NULL, toklist);
 		if (token != NULL) {
@@ -887,7 +887,7 @@ main(int argc, char *argv[])
 		case MAIN_BODY | INPUT_OUTPUT:
 		case MAIN_BODY | WIRE:
 		case MAIN_BODY | REGISTER:
-		   toklist = " \t\n[:]";
+		   toklist = " \t\n[:],";
 		   break;
 
 		case MAIN_BODY:
