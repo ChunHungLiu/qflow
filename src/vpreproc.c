@@ -364,10 +364,9 @@ paramcpy(char *dest, char *source, parameter *params)
 int
 main(int argc, char *argv[])
 {
-    FILE *fsource;
-    FILE *finit;
-    FILE *fclk;
-    FILE *ftmp;
+    FILE *fsource = NULL;
+    FILE *finit = NULL;
+    FILE *ftmp = NULL;
 
     char comment_pending;
     char *xp, *fptr, *token, *sptr, *bptr;
@@ -525,12 +524,6 @@ main(int argc, char *argv[])
 		       fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
 		    }
 
-		    sprintf(locfname, "%s.clk", topmod->name);
-		    fclk = fopen(locfname, "w");
-		    if (fclk == NULL) {
-			fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
-		    }
-
 		    sprintf(locfname, "%s_tmp.v", topmod->name);
 		    ftmp = fopen(locfname, "w");
 		    if (ftmp == NULL) {
@@ -665,8 +658,6 @@ main(int argc, char *argv[])
 			// To-do:  Clean up now, so that we can process multiple modules
 
 			if (finit != NULL) fclose(finit);
-			if (fclk != NULL) fclose(fclk);
-			if (ftmp != NULL) fclose(ftmp);
 			state = HEADER_STUFF;
 		    }
 		    break;
@@ -1022,6 +1013,7 @@ main(int argc, char *argv[])
 
     /* Done! */
 
+    if (ftmp != NULL) fclose(ftmp);
     fclose(fsource);
 
     /* Next step:  Handling multiple clock domains.			*/
