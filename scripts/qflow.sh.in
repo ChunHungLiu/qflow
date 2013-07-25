@@ -24,16 +24,6 @@ if ( $project == "" ) then
    set project=`pwd`
 endif
 
-# Environment variable QFLOW_VERILOG_PARSER overrides the parser
-# being used (VIS or Odin-II).  Otherwise, if only one parser
-# was installed with qflow, use that, and if both were installed,
-# give precedence to Odin-II.
-
-set parser=`printenv QFLOW_VERILOG_PARSER`
-if ($parser == "" ) then
-   set parser=QFLOW_DEFAULT_PARSER
-endif
-
 # Source file is not specified unless given on the command line,
 # or if there is only one source file in the source directory.
 set vsource=""
@@ -60,12 +50,6 @@ while ($#argv > 0)
       case --project:
 	 shift
 	 set project=$argv[1]
-	 shift
-	 breaksw
-      case -v:
-      case --verilog:
-	 shift
-	 set parser=$argv[1]
 	 shift
 	 breaksw
       case -h:
@@ -125,7 +109,6 @@ if ($dohelp == 1 || $#argv != 0) then
    echo ""
    echo "Options:    -T, --tech <name>		Use technology <name>"
    echo "	     -p, --project <name>	Project root directory is <name>"
-   echo "	     -v, --verilog <name>	Use verilog parser <name>"
    if ($dohelp == 1) then
       exit 0
    else
@@ -183,6 +166,9 @@ echo "set techname=${techname}" >> ${varfile}
 echo "set scriptdir=${scriptdir}" >> ${varfile}
 echo "set bindir=${bindir}" >> ${varfile}
 echo "set synthlog=${projectpath}/synth.log" >> ${varfile}
+echo "if (-f ${projectpath}/project_vars.sh) then" >> ${varfile}
+echo "    source ${projectpath}/project_vars.sh" >> ${varfile}
+echo "endif" >> ${varfile}
 echo "#-------------------------------------------" >> ${varfile}
 echo "" >> ${varfile}
 
@@ -195,7 +181,7 @@ echo "" >> ${execfile}
 if ($dosynth == 0) then
    echo -n "# " >> ${execfile}
 endif
-echo "${scriptdir}/synthesize.sh -v ${parser} ${projectpath} ${modulename}" \
+echo "${scriptdir}/synthesize.sh ${projectpath} ${modulename}" \
 	>> ${execfile}
 
 if ($doplace == 0) then

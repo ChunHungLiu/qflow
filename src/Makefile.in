@@ -12,12 +12,12 @@ INSTALL = @INSTALL@
 QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
 QFLOW_TW_PATH = @QFLOW_TW_PATH@
 QFLOW_QROUTER_PATH = @QFLOW_QROUTER_PATH@
-QFLOW_SIS_PATH = @QFLOW_SIS_PATH@
-QFLOW_VIS_PATH = @QFLOW_VIS_PATH@
+QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
+QFLOW_ODIN_PATH = @QFLOW_ODIN_PATH@
 QFLOW_MAGIC_PATH = @QFLOW_MAGIC_PATH@
 
 OBJECTS = AddIO2BDnet.o BDnet2BSpice.o BDnet2Verilog.o CleanUpBDnet.o BDnetFanout.o
-OBJECTS += vpreproc.o
+OBJECTS += vpreproc.o dcombine.o vsplit.o blifrtl2bdnet.o
 SOURCES := $(patsubst %.o,%.c,$(OBJECTS))
 TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
 
@@ -40,18 +40,27 @@ CleanUpBDnet$(EXEEXT): CleanUpBDnet.o
 vpreproc$(EXEEXT): vpreproc.o
 	$(CC) $(LDFLAGS) vpreproc.o -o $@ $(LIBS)
 
+dcombine$(EXEEXT): dcombine.o
+	$(CC) $(LDFLAGS) dcombine.o -o $@ $(LIBS)
+
+vsplit$(EXEEXT): vsplit.o
+	$(CC) $(LDFLAGS) vsplit.o -o $@ $(LIBS)
+
+blifrtl2bdnet$(EXEEXT): blifrtl2bdnet.o
+	$(CC) $(LDFLAGS) blifrtl2bdnet.o -o $@ $(LIBS)
+
 install: $(TARGETS)
 	@echo "Installing verilog and BDNET file format handlers"
 	$(INSTALL) -d ${BININSTALL}
 	@for target in $(TARGETS); do \
 	   $(INSTALL) $$target ${BININSTALL} ;\
 	done
-	@echo "Installing links to TimberWolf, qrouter, SIS, and VIS"
-	(cd ${BININSTALL};  $(RM) twdir;  ln -s $(QFLOW_TW_PATH) twdir)
-	(cd ${BININSTALL};  $(RM) qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
-	(cd ${BININSTALL};  $(RM) sis;  ln -s $(QFLOW_SIS_PATH) sis)
-	(cd ${BININSTALL};  $(RM) vis;  ln -s $(QFLOW_VIS_PATH) vis)
-	(cd ${BININSTALL};  $(RM) magic;  ln -s $(QFLOW_MAGIC_PATH) magic)
+	@echo "Installing links to TimberWolf, qrouter, odin_ii, and abc"
+	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s $(QFLOW_TW_PATH) twdir)
+	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
+	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc)
+	(cd ${BININSTALL};  $(RM) -f odin_ii;  ln -s $(QFLOW_ODIN_PATH) odin_ii)
+	(cd ${BININSTALL};  $(RM) -f magic;  ln -s $(QFLOW_MAGIC_PATH) magic)
 
 uninstall:
 	$(RM) -rf ${BININSTALL}

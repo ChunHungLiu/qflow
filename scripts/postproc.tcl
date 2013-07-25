@@ -46,7 +46,7 @@ if [catch {open $initfile r} inet] {
 }
 
 if [catch {open $varsfile r} vfd] {
-   puts stderr "Error: can't open file $outfile for writing!"
+   puts stderr "Error: can't open file $varsfile for reading!"
    exit 1
 }
 
@@ -132,7 +132,7 @@ while {[gets $bnet line] >= 0} {
 # Add a reset inverter/buffer to the netlist
 # Add two inverters if the reset signal was inverted
 
-foreach resetnet $resetlist {
+foreach resetnet [lsort -uniq $resetlist] {
    if {[string first "not_" $resetnet] == 0} {
       set rstorig [string range $resetnet 4 end]
       puts $onet ""
@@ -148,9 +148,13 @@ foreach resetnet $resetlist {
    puts $onet ""
 }
 
+# The postproc file has replaced all latches with DFFDEFAULT having
+# three pins D, CLK, and Q, in that order, which makes it easy to
+# parse.
+
 set sridx 0
 while {1} {
-   if [regexp [subst {^INSTANCE "${flopcell}":"physical"}] $line lmatch] {
+   if [regexp [subst {^INSTANCE "DFFDEFAULT":"physical"}] $line lmatch] {
        gets $bnet dline
        gets $bnet cpline
        gets $bnet qline
@@ -261,6 +265,10 @@ while {1} {
 		set srline \
 		   "\t\"${setpin}\" : \"${net1}\";\n\t\"${resetpin}\" : \"${net2}\";"
 	     }
+	  } else {
+	      # No recorded init state, use plain flop
+	      set line "INSTANCE \"${flopcell}\":\"physical\""
+	      set srline ""
 	  }
        }
 

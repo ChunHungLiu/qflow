@@ -1,10 +1,9 @@
 /*------------------------------------------------------*/
-/* vpreproc.c						*/
+/* vsplit.c						*/
 /*							*/
 /* Tokenize a verilog source file and parse it for	*/
-/* structures that the Odin-II/abc flow cannot handle.	*/
-/* Generally, this means handling things that are	*/
-/* relevant to an ASIC flow but not to an FPGA flow.	*/
+/* structures that our simple VIS/SIS flow cannot	*/
+/* handle.						*/
 /*							*/
 /* 1) Reset signals are pulled out of the code, and	*/
 /*    the reset conditions are saved to a file named	*/
@@ -12,21 +11,21 @@
 /*    and used to replace standard flops with set,	*/
 /*    reset, or both flops.				*/
 /*							*/
-/* 2) Parameter and `define substitutions are done by	*/
-/*    vpreproc.						*/
-/*							*/
-/* 3) Inverted clocks are made non-inverting, with a	*/
+/* 2) Inverted clocks are made non-inverting, with a	*/
 /*    file called "<rootname>.clk" made to track which	*/
 /*    clocks are inverted.  Inverters will be put in	*/
-/*    front of the clock networks in the final netlist	*/
-/*    (This has not been done yet, need to check the	*/
-/*    capability of Odin-II and abc to handle negedge	*/
-/*    clocks).						*/
+/*    front of the clock networks in the final netlist.	*/
 /*							*/
-/* 4) (Temporary) Record all clocks signal that are 	*/
-/*    not in the input list of the module in a file	*/
-/*    called "<rootname>.clk".  This is needed to work	*/
-/*    around a bug in Odin-II.				*/
+/* 3) The file is broken up into multiple source files	*/
+/*    for each clock found, such that each file has	*/
+/*    only one clock signal.  The resulting netlists	*/
+/*    will be stitched together at the end, and the	*/
+/*    original source file will be used to determine	*/
+/*    which pins are the I/O of the whole module.	*/
+/*							*/
+/* 4) Because VIS does not understand the "parameter"	*/
+/*    statement, parameters substitutions are done by	*/
+/*    vsplit.						*/
 /*------------------------------------------------------*/
 
 #define DEBUG 1
@@ -37,25 +36,18 @@
 #include <malloc.h>
 #include <stdlib.h>		// For exit(n)
 
-// Signal (single-bit) data structure
+// Meta-structure for storing vector lists
+typedef struct _vlist *vlistptr;
 
+// Signal (single-bit) data structure
 typedef struct _sigact *sigactptr;
 
 typedef struct _sigact {
    char *name;			// Name of clock, reset, or enable signal
    char edgetype;		// POSEDGE or NEGEDGE
+   vlistptr depend;		// signals that are used in this domain
    sigactptr next;
 } sigact;
-
-typedef struct _signal *sigptr;
-
-typedef struct _signal {
-   char *name;
-   char value;			// reset value: 0, 1; or -1 if signal is not registered
-   sigptr link;			// signal representing reset value if not constant, NULL
-				// if signal is constant, and reset value is "value".
-   sigactptr reset;		// reset signal that resets this bit
-} signal;
 
 // Vector data structure
 typedef struct _vector *vecptr;
@@ -65,9 +57,23 @@ typedef struct _vector {
    int vector_size;		// zero means signal is not a vector
    int vector_start;
    int vector_end;
-   signal *bits;		// allocated list of individual bits
+   sigactptr clock;		// pointer to clock that updates this vector
    vecptr next;
 } vector;
+
+typedef struct _vlist {
+   vecptr depend;
+   char registered;		// Is signal registered in this domain?
+   char output;			// Has signal been written to the output? (see below)
+   vlistptr next;
+} vlist;
+
+// Definition of values used for "output" variable in vlist:
+#define NO_OUTPUT	0	// Signal has not been written to I/O list
+#define OUTPUT_OK	1	// Signal has been written to I/O list
+#define IS_INPUT	2	// Signal will need "input" line
+#define IS_OUTPUT	3	// Signal will need "output" line
+
 
 // Module data structure
 typedef struct _module {
@@ -94,12 +100,14 @@ typedef struct _parameter {
 #define  MODULE_VALID	0x0002		// Read "module"
 #define  INPUT_OUTPUT	0x0004		// Section with "input" and "output"
 #define  MAIN_BODY	0x0008		// Main body of module, after I/O list
+#define  ALWAYS_BLOCK	0x0010		// Inside "always" block (domain splitting)
 #define  SENS_LIST	0x0010		// Parsing a sensitivity list
 #define  IN_CLKBLOCK	0x0020		// Within a begin...end block after always()
 #define  IN_IFELSE	0x0040		// Within an if...else condition
 #define  IN_IFBLOCK	0x0080		// Within a begin...end block after if()
 #define  COMMENT	0x0100		// Within a C-type comment
 #define  ASSIGNMENT_LHS	0x0200		// In a multi-line assignment
+#define  ASSIGNMENT	0x0200		// In an assignment (during domain splitting)
 #define  ASSIGNMENT_RHS	0x0400		// In a multi-line assignment
 #define  WIRE		0x0800		// In a wire declaration
 #define  REGISTER	0x1000		// In a register declaration
@@ -109,7 +117,7 @@ typedef struct _parameter {
 #define  POSEDGE	2
 
 // Condition types
-#define  UNKNOWN	-1
+#define	 UNKNOWN	-1
 #define  EQUAL		1
 #define  NOT_EQUAL	2
 
@@ -361,6 +369,578 @@ paramcpy(char *dest, char *source, parameter *params)
 }
 
 /*------------------------------------------------------*/
+/* Add a dependency to a clock domain			*/
+/*------------------------------------------------------*/
+
+void
+add_dependency(vector *testvec, sigact *clocksig, char is_registered)
+{
+    vlistptr newdepend, tdepend;
+
+    // Check clocksig's depend list.  If testvec is on the list, then
+    // ignore it.  However, if this dependency shows that the signal
+    // is registered in this domain, and the testvec is not marked
+    // as registered, then mark it before returning.
+
+    for (tdepend = clocksig->depend; tdepend; tdepend = tdepend->next)
+	if (tdepend->depend == testvec) {
+	    if (tdepend->registered == (char)0 && is_registered != (char)0)
+		tdepend->registered = is_registered;    
+	    return;
+	}
+
+    // Otherwise prepend the signal to the dependency
+    // list for the clock domain.
+
+    newdepend = (vlistptr)malloc(sizeof(vlist));
+    newdepend->next = clocksig->depend;
+    clocksig->depend = newdepend;
+    newdepend->depend = testvec;
+    newdepend->registered = is_registered;
+    newdepend->output = NO_OUTPUT;
+}
+
+/*------------------------------------------------------*/
+/* Record any signal found in "token" as a dependency	*/
+/* of the module with clock "clocksig".			*/
+/*							*/
+/* NOTE:  This routine should be heavily optimized,	*/
+/* since it is used to search every token in any 	*/
+/* "always" block for a match to known signal names.	*/
+/* Hashing would be a good idea.			*/
+/*------------------------------------------------------*/
+
+void
+check_depend(module *thismod, char *token, sigact *clocksig, char is_registered)
+{
+    char tcopy[256];
+    char *aptr, *bptr;
+    vector *testvec;
+
+    strncpy(tcopy, token, 255);		/* Don't mess with token */
+    bptr = tcopy;
+
+    // NOTE:  Valid verilog names must begin with a letter or underscore,
+    // and may contain only letters, numbers, underscores, and dollar signs.
+ 
+    while (!isalpha(*bptr) && (*bptr != '\0') && (*bptr != '_')) bptr++;
+    if (isalpha(*bptr) || (*bptr == '_')) {
+	aptr = bptr;
+	while (*aptr != '\0') {
+	    if (!isalnum(*aptr) && (*aptr != '_') && (*aptr != '$')) {
+		*aptr = '\0';
+		break;
+	    }
+	    else
+		aptr++;
+	}
+
+	// Check RHS token for a wire name
+	for (testvec = thismod->wirelist; testvec != NULL;
+				testvec = testvec->next) {
+	    if (!strcmp(testvec->name, bptr)) {
+		// Add testvec to the list of dependencies for clocksig
+		add_dependency(testvec, clocksig, is_registered);
+		break;
+	    }
+	}
+	if (testvec == NULL) {
+	    // Check RHS token for a register name
+	    for (testvec = thismod->reglist; testvec != NULL;
+				testvec = testvec->next) {
+		if (!strcmp(testvec->name, bptr)) {
+		    // Add testvec to the list of dependencies for clocksig
+		    add_dependency(testvec, clocksig, is_registered);
+		    break;
+		}
+	    }
+	}
+	if (testvec == NULL) {
+	    // Check RHS token for an I/O name, since it's
+	    // possible for inputs not to be declared as wires,
+	    // so they might not be in the wire list
+	    for (testvec = thismod->iolist; testvec != NULL;
+				testvec = testvec->next) {
+		if (!strcmp(testvec->name, bptr)) {
+		    // Add testvec to the list of dependencies for clocksig
+		    add_dependency(testvec, clocksig, is_registered);
+		    break;
+		}
+	    }
+	}
+
+	// Move aptr past the testvec name and continue searching,
+	// since verilog does not require whitespace and the token
+	// may contain multiple name references, e.g., "a+b+c".
+
+	if (testvec)
+	    aptr = bptr + strlen(testvec->name);
+	else {
+	    while (isalnum(*aptr) || (*aptr == '_') || (*aptr == '$')) {
+		aptr++;
+		if (*aptr == '\0') break;
+	    }
+	}
+    }
+}
+
+/*------------------------------------------------------*/
+/* Return a pointer to the clock signal of the domain	*/
+/* in which signal "testv" is registered.  If there is	*/
+/* none, then "testv" is a wire and NULL is returned.	*/
+/*------------------------------------------------------*/
+
+sigact *
+signal_registered_in(module *topmod, vlistptr testv, vlistptr *testvr)
+{
+    vlistptr testv2;
+    sigact *clocksig;
+
+    for (clocksig = topmod->clocklist; clocksig; clocksig = clocksig->next)
+	for (testv2 = clocksig->depend; testv2; testv2 = testv2->next)
+	    if ((testv2->depend == testv->depend) && (testv2->registered == (char)1)) {
+		if (testvr) *testvr = testv2; 
+		return clocksig;
+	    }
+
+    return NULL;	/* Signal is not registered, must be a wire */	
+}
+
+/*------------------------------------------------------*/
+/* Check if a signal is used in a module other than	*/
+/* clocksig (where it is assumed to be registered).	*/
+/* Return 1 if true, 0 if false.			*/
+/*							*/
+/* If clocksig is not combdomain (assignments are not	*/
+/* made in the domain of clocksig), then we need to	*/
+/* check the dependency list for wiredomain as well.	*/
+/*------------------------------------------------------*/
+
+char
+signal_used_in(module *topmod, vlistptr testv, sigact *clocksig,
+		sigact *combdomain, sigact *wiredomain)
+{
+    sigact *testclk;
+    vlistptr testv2;
+
+    for (testclk = topmod->clocklist; testclk; testclk = testclk->next) {
+	if (testclk == clocksig) continue;
+	for (testv2 = testclk->depend; testv2; testv2 = testv2->next)
+	    if (testv2->depend == testv->depend)
+		return (char)1;
+    }
+
+    if (clocksig != combdomain)
+    {
+	for (testv2 = wiredomain->depend; testv2; testv2 = testv2->next)
+	    if (testv2->depend == testv->depend)
+		return (char)1;
+    }
+
+    return (char)0;
+}
+
+/*------------------------------------------------------*/
+/* Write a single clock domain output verilog file	*/
+/*							*/
+/* "clocksig" points to the clock domain to be output	*/
+/* on this call.  It may be NULL if we are writing a	*/
+/* combinatorial-only output.				*/
+/*							*/
+/* "combdomain" points to the clock domain to which	*/
+/* combinatorial signals have been assigned.  It may	*/
+/* be NULL if combinatorial signals go in their own	*/
+/* domain, without any clock.				*/
+/*							*/
+/* "wiredomain" is a pointer to the combinatorial	*/
+/* dependency list.  These dependencies should be added	*/
+/* to those for "clocksig" when "clocksig" is equal to	*/
+/* "combdomain".					*/
+/*------------------------------------------------------*/
+
+void
+write_single_domain(FILE *fsource, FILE *ftmp, sigact *clocksig,
+	module *topmod, sigact *combdomain, sigact *wiredomain)
+{
+    char linebuf[2048];
+    char linecopy[2048];
+    const char *toklist;
+    char *token, *fptr, *aptr;
+    int state, line_num, ival;
+    char suspend, check_clock, iolist_complete, printed_last;
+    vector *testvec;
+    vlistptr testv, testv2;
+    sigact *otherdomain;
+
+    token = NULL;
+    toklist = " \t\n";
+    state = HEADER_STUFF;
+    suspend = (char)0;
+    check_clock = (char)0;
+    iolist_complete = (char)0;
+    printed_last = (char)0;
+    line_num = 1;
+
+    rewind(fsource);
+
+    fgets(linebuf, 2047, fsource);
+    fptr = linebuf;
+
+    while (1) {		/* Read continuously and break loop when input is exhausted */
+
+	strcpy(linecopy, linebuf);	// Keep a copy of the line we're processing
+	token = strtok(fptr, toklist);
+
+	while (token != NULL) {
+
+	    /* State-independent processing */
+	    /* Note that parameters have already been removed from this file */
+
+	    if (!strncmp(token, "//", 2)) {
+		break;	// Forget rest of line and read next line
+	    }
+
+	    /* State-dependend processing */
+
+	    switch (state) {
+		case HEADER_STUFF:
+		    if (!strcmp(token, "module")) {
+		        state &= ~HEADER_STUFF;
+		        state |= MODULE_VALID;
+		    }
+		    break;
+
+		case MODULE_VALID:
+		    state |= INPUT_OUTPUT;
+		    break;
+
+		case MODULE_VALID | INPUT_OUTPUT:
+		    if (!strcmp(token, ";")) {
+			// Analyze the signals for the following two cases:
+			// 1) If a signal is used in Y, but registered in X,
+			//	it is an input of Y and an output of X.
+			// 2) If a signal is used in Y, not registered, and
+			//	Y is not wiredomain, then it is an input of
+			//	Y and an output of wiredomain
+			for (testv = clocksig->depend; testv; testv = testv->next) {
+			    if (testv->output == IS_OUTPUT) {
+				if (printed_last) fprintf(ftmp, ",");
+				fprintf(ftmp, "%s\n", testv->depend->name);
+				printed_last = (char)1;
+			    }
+			    otherdomain = signal_registered_in(topmod, testv, &testv2);
+			    if (otherdomain != NULL && otherdomain != clocksig) {
+				if (testv->output == NO_OUTPUT) {
+				    testv->output = IS_INPUT;
+				    if (printed_last) fprintf(ftmp, ",");
+				    fprintf(ftmp, "%s\n", testv->depend->name);
+				    printed_last = (char)1;
+				}
+				if (testv2->output == NO_OUTPUT)
+				    testv2->output = IS_OUTPUT;
+			    }
+			    else if (otherdomain == clocksig && testv->output ==
+					NO_OUTPUT) {
+				if (signal_used_in(topmod, testv, clocksig,
+						combdomain, wiredomain)) {
+				    testv->output = IS_OUTPUT;
+				    if (printed_last) fprintf(ftmp, ",");
+				    fprintf(ftmp, "%s\n", testv->depend->name);
+				    printed_last = (char)1;
+				}
+			    }
+			    else if (otherdomain == NULL && clocksig != combdomain &&
+					testv->output == NO_OUTPUT) {
+				if (printed_last) fprintf(ftmp, ",");
+				fprintf(ftmp, "%s\n", testv->depend->name);
+				printed_last = (char)1;
+				testv->output = IS_INPUT;
+
+				// Find this signal in wiredomain and make it an
+				// output.
+
+				for (testv2 = wiredomain->depend; testv2; testv2 =
+						testv2->next) {
+				    if (testv2->depend == testv->depend) {
+					testv2->output = IS_OUTPUT;
+					break;
+				    }
+				}
+			    }
+			}
+			if (clocksig == combdomain) {
+			    for (testv = wiredomain->depend; testv; testv = testv->next) {
+				if (testv->output == IS_OUTPUT) {
+				    if (printed_last) fprintf(ftmp, ",");
+				    fprintf(ftmp, "%s\n", testv->depend->name);
+				    printed_last = (char)1;
+				}
+				otherdomain = signal_registered_in(topmod, testv, &testv2);
+				if (otherdomain != NULL && otherdomain != clocksig
+					&& otherdomain != wiredomain) {
+				    if (testv->output == NO_OUTPUT) {
+					testv->output = IS_INPUT;
+					if (printed_last) fprintf(ftmp, ",");
+					fprintf(ftmp, "%s\n", testv->depend->name);
+					printed_last = (char)1;
+				    }
+				    if (testv2->output == NO_OUTPUT)
+					testv2->output = IS_OUTPUT;
+				}
+			    }
+
+			    // If any clock signal appears in wirelist,
+			    // then it is an output of wiredomain.
+
+			    for (otherdomain = topmod->clocklist; otherdomain;
+						otherdomain = otherdomain->next) {
+				if (otherdomain != clocksig) {
+				    for (testvec = topmod->wirelist; testvec;
+						testvec = testvec->next) {
+					if (!strcmp(testvec->name,
+							otherdomain->name)) {
+					    // We found a clock signal that is
+					    // an assigned value.  Find it again
+					    // in the dependency list for
+					    // wiredomain.
+					    for (testv = wiredomain->depend;
+							testv; testv = testv->next)
+						if (testv->depend == testvec)
+						    if (testv->output != OUTPUT_OK) {
+							testv->output = IS_OUTPUT;
+							if (printed_last)
+							    fprintf(ftmp, ",");
+							fprintf(ftmp, "%s\n",
+								testv->depend->name);
+							printed_last = (char)1;
+							break;
+						    }
+					}
+				    }
+				}
+			    }
+			}
+	
+			suspend = 0;
+		        state = MAIN_BODY;
+			break;
+		    }
+
+		    // Parse the clocksig depend list and copy only
+		    // those signals on the list.
+		    for (testv = clocksig->depend; testv; testv = testv->next)
+			if (!strcmp(token, testv->depend->name))
+			    break;
+
+		    if ((testv == NULL) && (clocksig == combdomain))
+			for (testv = wiredomain->depend; testv; testv = testv->next)
+			    if (!strcmp(token, testv->depend->name))
+				break;
+
+		    if (testv == NULL) {
+			suspend = 2;	/* Don't output this line */
+			printed_last = (char)0;
+		    }
+		    else {
+			testv->output = OUTPUT_OK;	// Signal has been output
+			printed_last = (char)1;		// in module's I/O list
+		    }
+
+		    break;
+
+		case MAIN_BODY | WIRE:
+		case MAIN_BODY | REGISTER:
+		case MAIN_BODY | INPUT_OUTPUT:
+		    // Remove any semicolon but remember that it was there
+		    if ((aptr = strchr(token, ';')) != NULL)
+			*aptr = '\0';
+
+		    // Ignore array bounds
+		    if (sscanf(token, "%d", &ival) != 1) {
+
+			// Parse the clocksig depend list and copy only
+			// those signals on the list.
+			for (testv = clocksig->depend; testv; testv = testv->next)
+			    if (!strcmp(token, testv->depend->name))
+				break;
+
+			if ((testv == NULL) && (clocksig == combdomain))
+			    for (testv = wiredomain->depend; testv; testv = testv->next)
+				if (!strcmp(token, testv->depend->name))
+				    break;
+
+			if (testv == NULL)
+			    suspend = 2;	/* Don't output this line */
+
+			else if (state & REGISTER) {
+			    if (testv->registered == (char)0)
+				suspend = 2;	/* Not registered in this domain */
+			}
+		    }
+		    if (aptr != NULL) {
+			*aptr = ';';
+		        state = MAIN_BODY;	// Return to main body processing
+		    }
+		    break;
+
+		case MAIN_BODY | ASSIGNMENT:
+		    // Assignments are only output when clocksig matches combdomain
+		    // (both may be NULL)
+		    if (clocksig != combdomain) suspend = 2;
+
+		    // Remove any semicolon but remember that it was there
+		    if ((aptr = strchr(token, ';')) != NULL)
+			state = MAIN_BODY;	// Return to main body processing
+
+		    break;
+
+		case MAIN_BODY:
+		    if (!strcmp(token, "input")) {
+			state |= INPUT_OUTPUT;
+		    }
+		    else if (!strcmp(token, "output")) {
+			state |= INPUT_OUTPUT;
+		    }
+		    else if (!strcmp(token, "wire")) {
+			// Add to list of known wires
+			state |= WIRE;
+		    }
+		    else if (!strcmp(token, "reg")) {
+			// Add to list of known registers
+			state |= REGISTER;
+		    }
+		    else if (!strcmp(token, "assign")) {
+			state |= ASSIGNMENT;
+		    }
+		    else if (!strncmp(token, "always", 6)) {
+			state &= ~MAIN_BODY;
+			state |= ALWAYS_BLOCK;
+		    }
+		    else if (!strcmp(token, "endmodule")) {
+			if (DEBUG) printf("End of module \"%s\" found.\n", topmod->name);
+			state = HEADER_STUFF;
+		    }
+
+		    // The first time we encounter a wire or register,
+		    // we need to add the rest of the I/O to the list of
+		    // inputs and outputs.
+
+		    if ((state & WIRE) || (state & REGISTER)) {
+			if (iolist_complete == (char)0) {
+			    iolist_complete = (char)1;
+
+			    // Find all domain dependencies that have been
+			    // marked IS_INPUT or IS_OUTPUT, and write an
+			    // output line for each.
+
+			    for (testv = clocksig->depend; testv; testv = testv->next) {
+				if (testv->output == IS_INPUT
+						|| testv->output == IS_OUTPUT) {
+				    if (testv->output == IS_INPUT)
+					fprintf(ftmp, "input ");
+				    else if (testv->output == IS_OUTPUT)
+					fprintf(ftmp, "output ");
+				    if (testv->depend->vector_size > 1)
+					fprintf(ftmp, "[%d:%d] ",
+						testv->depend->vector_start,
+						testv->depend->vector_end);
+				    fprintf(ftmp, "%s;\n", testv->depend->name);
+				    testv->output = OUTPUT_OK;
+				}
+			    }
+			    if (clocksig == combdomain) {
+				for (testv = wiredomain->depend; testv;
+						testv = testv->next) {
+				    if (testv->output == IS_INPUT
+						|| testv->output == IS_OUTPUT) {
+					if (testv->output == IS_INPUT)
+				            fprintf(ftmp, "input ");
+					else if (testv->output == IS_OUTPUT)
+				            fprintf(ftmp, "output ");
+					if (testv->depend->vector_size > 1)
+					    fprintf(ftmp, "[%d:%d] ",
+						testv->depend->vector_start,
+						testv->depend->vector_end);
+					fprintf(ftmp, "%s;\n", testv->depend->name);
+					testv->output = OUTPUT_OK;
+				    }
+				}
+			    }
+			}
+		    }
+
+		    break;
+
+		case ALWAYS_BLOCK:
+		    if (!strcmp(token, "posedge") || !strcmp(token, "negedge")) {
+			check_clock = (char)1;
+		    }
+		    else if (check_clock == (char)1) {
+			// This token is a clock signal.  If it matches the
+			// domain, we're good.  If not, we suspend output
+			// until the next "always" block or "endmodule".
+
+			if (strcmp(token, clocksig->name)) suspend = 1;
+			check_clock = (char)0;
+		    }
+		    else if (!strcmp(token, "always") || !strcmp(token, "endmodule"))
+			suspend = 0;
+		    break;
+
+		default:
+		    break;
+	    }
+
+	    /* Proceed to next token */
+
+	    switch(state) {
+	        /* State-dependent token processing */
+		case MODULE_VALID:
+		case MODULE_VALID | INPUT_OUTPUT:
+		   toklist = " \t\n(),";
+		   break;
+
+		case MAIN_BODY | INPUT_OUTPUT:
+		case MAIN_BODY | WIRE:
+		case MAIN_BODY | REGISTER:
+		   toklist = " \t\n[:],";
+		   break;
+
+		case MAIN_BODY:
+		   toklist = " \t\n@(";
+		   break;
+
+		case SENS_LIST:
+		   toklist = " \t\n()";
+		   break;
+
+		case IN_CLKBLOCK | IN_IFELSE:
+		   toklist = " \t\n(";
+		   break;
+
+		case IN_CLKBLOCK | IN_IFELSE | IN_IFBLOCK:
+		   toklist = " \t\n;";
+		   break;
+
+		default:
+		   toklist = " \t\n";
+		   break;
+	    }
+	    token = strtok(NULL, toklist);
+	}
+
+	/* Proceed to next line;  if we get back NULL, we're at EOF */
+
+	if (suspend == 0 && ftmp != NULL) fputs(linecopy, ftmp);
+	if (suspend == 2) suspend = 0;
+	line_num++;
+
+	if (fgets(linebuf, 2047, fsource) == NULL)
+	    break;
+    }
+}
+
+/*------------------------------------------------------*/
 /* Main verilog preprocessing code			*/
 /*------------------------------------------------------*/
 
@@ -369,20 +949,20 @@ main(int argc, char *argv[])
 {
     FILE *fsource = NULL;
     FILE *finit = NULL;
-    FILE *fclk = NULL;
     FILE *ftmp = NULL;
 
     char comment_pending;
-    char *xp, *fptr, *token, *sptr, *bptr, *filename;
+    char *xp, *fptr, *token, *sptr, *bptr, *lasttok, *sigp, *aptr;
     char locfname[512];
     char linebuf[2048];
     char linecopy[2048];
     const char *toklist;
 
     module *topmod;
-    sigact *clocksig;
+    sigact *clocksig, wiredomain;
     sigact *resetsig, *testreset, *testsig;
-    vector *initvec, *testvec, *newvec;
+    vector *initvec, *testvec, *newvec, *lhssig;
+    vlist  *newdepend;
     parameter *params = NULL;
 
     int state, nextstate;
@@ -394,29 +974,22 @@ main(int argc, char *argv[])
     char edgetype;
     char suspend;		/* When =1, suspend output */
     char multidomain;
+    sigact *combdomain;
  
     /* Only one argument, which is the source filename */
 
     if (argc != 2) {
-	fprintf(stderr, "Usage:  vpreproc <source_file.v>\n");
+	fprintf(stderr, "Usage:  vsplit <source_file.v>\n");
 	exit(1);
     }
 
-    /* Copy argv[1] to filename and remove any extension */
-    filename = strdup(argv[1]);
-    xp = strrchr(filename, '.');
+    /* If argv[1] does not have a .v extension, make one */
 
-    /* "filename" will be the 1st argument without any file extension.	*/
-    /*		It will be used to generate all output filenames.	*/
-    /* "locfname" will be the full 1st argument if it has an extension	*/
-    /* 		or else ".v" will be added if it doesn't.		*/
-
-    if (xp != NULL) {
-	strcpy(locfname, filename);
-	*xp = '\0';
-    }
+    xp = strrchr(argv[1], '.');
+    if (xp != NULL)
+        snprintf(locfname, 511, "%s", argv[1]);
     else
-        snprintf(locfname, 511, "%s.v", filename);
+        snprintf(locfname, 511, "%s.v", argv[1]);
 
     fsource = fopen(locfname, "r");
     if (fsource == NULL) {
@@ -424,36 +997,24 @@ main(int argc, char *argv[])
 	exit(1);
     }
 
-    /* Okay, got the file handle, start reading */
+    /* Okay, got all the file handles, start reading */
 
     if (fgets(linebuf, 2047, fsource) == NULL) {
 	fprintf(stderr, "Error reading source file \"%s.v\"", locfname);
 	exit(1);
     }
-
-    /* Create the files we want to write to for this file 		*/
-    /* There will only be one of each file for this verilog source,	*/
-    /* not one of each file per module.					*/
-
-    sprintf(locfname, "%s.init", filename);
-    finit = fopen(locfname, "w");
-    if (finit == NULL) {
-       fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
-    }
-
-    sprintf(locfname, "%s.clk", filename);
-    fclk = fopen(locfname, "w");
-    if (fclk == NULL) {
-       fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
-    }
-
-    sprintf(locfname, "%s_tmp.v", filename);
-    ftmp = fopen(locfname, "w");
-    if (ftmp == NULL) {
-	fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
-    }
-
     fptr = linebuf;
+
+    /* wiredomain is a fixed sigact structure that we use to assign all	*/
+    /* signal dependencies used by "assign" statements.  This can	*/
+    /* either be assigned to an independent domain or merged with one	*/
+    /* of the clock domains.						*/
+
+    wiredomain.name = NULL;
+    wiredomain.next = NULL;
+    wiredomain.depend = NULL;
+    wiredomain.edgetype = 0;
+
     state = HEADER_STUFF;
     suspend = (char)0;
     line_num = 1;
@@ -461,6 +1022,11 @@ main(int argc, char *argv[])
     blocklevel = 0;	/* Nesting of begin...end blocks */
     condition = UNKNOWN;
     multidomain = 0;
+    combdomain = NULL;
+    lasttok = NULL;
+    lhssig = NULL;
+    clocksig = NULL;
+    token = NULL;
     toklist = " \t\n";	/* Default token list at beginning (state HEADER_STUFF) */
 
     while (1) {		/* Read continuously and break loop when input is exhausted */
@@ -468,8 +1034,13 @@ main(int argc, char *argv[])
 	paramcpy(linecopy, linebuf, params);	// Substitute parameters
 	strcpy(linebuf, linecopy);	// Keep a copy of the line we're processing
 
-	if (no_new_token == 0)
+	if (no_new_token == 0) {
+	   if (token != NULL) {
+	      if (lasttok != NULL) free(lasttok);
+	      lasttok = strdup(token);
+	   }
 	   token = strtok(fptr, toklist);
+	}
 	no_new_token = 0;
 
 	while (token != NULL) {
@@ -552,6 +1123,19 @@ main(int argc, char *argv[])
 		    topmod->resetlist = NULL;
 		    if (DEBUG) printf("Module name is \"%s\"\n", topmod->name);
 
+		    /* Create the files we want to write to for this module */
+		    sprintf(locfname, "%s.init", topmod->name);
+		    finit = fopen(locfname, "w");
+		    if (finit == NULL) {
+		       fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
+		    }
+
+		    sprintf(locfname, "%s_tmp.v", topmod->name);
+		    ftmp = fopen(locfname, "w");
+		    if (ftmp == NULL) {
+			fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
+		    }
+
 		    state |= INPUT_OUTPUT;
 		    break;
 
@@ -584,6 +1168,7 @@ main(int argc, char *argv[])
 		       else
 			  nextstate = state;
 		       newvec = (vector *)malloc(sizeof(vector));
+		       newvec->clock = NULL;	// To be filled later
 
 		       if (state & INPUT_OUTPUT) {
 		          newvec->next = topmod->iolist;
@@ -612,7 +1197,6 @@ main(int argc, char *argv[])
 		          newvec->vector_size = -1;
 		       newvec->vector_start = start;
 		       newvec->vector_end = end;
-		       newvec->bits = NULL;
 		       state = nextstate;
 		       start = -1;
 		       end = -1;
@@ -628,13 +1212,29 @@ main(int argc, char *argv[])
 		       else
 			   token = sptr + 1;	// And drop through to RHS assignment
 		    }
-		    else {
+		    else if (lhssig == NULL) {
 		       /* Record this assignment in case it is used as a clock or reset */
 		       if (DEBUG) printf("Processing assignment of \"%s\". . .\n", token);
+		       bptr = strchr(token, '[');
+		       if (bptr != NULL) *bptr = '\0';
+		       for (testvec = topmod->wirelist; testvec != NULL;
+					testvec = testvec->next) {
+			  if (!strcmp(testvec->name, token)) {
+			     lhssig = testvec;
+			     break;
+			  }
+		       }
 		    }
+		    // No break here;  drop through.
 
 		case MAIN_BODY | ASSIGNMENT_RHS:
-		    if ((sptr = strchr(token, ';')) != NULL) {
+		    // Check for a terminating semicolon here.
+		    sptr = strchr(token, ';');
+
+		    // Record any dependencies for the LHS signal.
+		    check_depend(topmod, token, &wiredomain, (char)0);
+
+		    if (sptr != NULL) {
 		       *sptr = '\0';
 		       state = MAIN_BODY;
 		       if (DEBUG) printf("Done with assignment.\n");
@@ -664,6 +1264,7 @@ main(int argc, char *argv[])
 		    else if (!strcmp(token, "assign")) {
 			// Track assignments in case they belong to clocks
 			// or resets.
+		        lhssig = NULL;
 			state |= ASSIGNMENT_LHS;
 		    }
 		    else if (!strncmp(token, "always", 6)) {
@@ -673,6 +1274,7 @@ main(int argc, char *argv[])
 			clocksig = NULL;
 			resetsig = NULL;
 			condition = UNKNOWN;
+		        lhssig = NULL;
 			initvec = NULL;
 			suspend = 1;
 		    }
@@ -736,35 +1338,7 @@ main(int argc, char *argv[])
 			     topmod->clocklist = clocksig;
 			     clocksig->name = strdup(token);
 			     clocksig->edgetype = edgetype;
-
-			     // Check if this clock is in the module's input
-			     // list.  Add it to the <module_name>.clk
-			     // file, and indicate if it is in the module's
-			     // input list, and if it is a wire or a register.
-			     //
-			     // Note that if the clock is in the module's
-			     // output list it will be called an input;  this
-			     // is okay for our purpose (see vmunge.c).
-
-			     for (testvec = topmod->iolist; testvec;
-						testvec = testvec->next)
-				if (!strcmp(testvec->name, clocksig->name))
-				    break;
-
-			     if (testvec != NULL)
-				fprintf(fclk, "%s input wire\n", clocksig->name);
-			     else {
-				 for (testvec = topmod->wirelist; testvec;
-						testvec = testvec->next)
-				    if (!strcmp(testvec->name, clocksig->name))
-				       break;
-
-				 if (testvec != NULL)
-				    fprintf(fclk, "%s internal wire\n", clocksig->name);
-				 else
-				    fprintf(fclk, "%s internal register\n",
-						clocksig->name);
-			     }
+			     clocksig->depend = NULL;
 		          }
 		          else {
 			     resetsig = (sigact *)malloc(sizeof(sigact));
@@ -772,6 +1346,7 @@ main(int argc, char *argv[])
 			     topmod->resetlist = resetsig;
 			     resetsig->name = strdup(token);
 			     resetsig->edgetype = edgetype;
+			     resetsig->depend = NULL;
 		          }
 		          if (DEBUG) printf("Adding clock or reset signal \"%s\"\n",
 					token);
@@ -899,6 +1474,7 @@ main(int argc, char *argv[])
 		    break;
 
 		case (IN_CLKBLOCK | IN_IFELSE | IN_IFBLOCK):
+
 		    if (!strcmp(token, "end")) {
 			blocklevel--;
 			if (blocklevel == 1) {
@@ -916,11 +1492,11 @@ main(int argc, char *argv[])
 		    else if (testreset != NULL && suspend == 1) {
 
 			// In the case that we have, e.g., "if (reset)", then
-			// "condition" will be unkownn.  Therefore assume a
+			// "condition" will be unknown.  Therefore assume a
 			// positive condition and output the reset signal
 			if (condition == UNKNOWN) {
-			    condition = EQUAL;
-			    fprintf(finit, "%s\n", testreset->name);
+			   condition = EQUAL;
+			   fprintf(finit, "%s\n", testreset->name);
 			}
 
 			// This is a signal to add to init list.  Parse LHS, RHS
@@ -1014,6 +1590,54 @@ main(int argc, char *argv[])
 		    break;
 	    }
 
+	    /* Track all registered assignments in clock blocks */
+
+	    if (!(state & COMMENT) && token && (clocksig != NULL)) {
+		if ((aptr = strstr(token, "<=")) != NULL) {
+		    if (aptr == token) {
+			sigp = lasttok;
+		    }
+		    else {
+			*aptr = '\0';
+	 		sigp = token;
+		    }
+
+		    // Find sigp in the register list
+		    if ((bptr = strchr(sigp, '[')) != NULL)
+			*bptr = '\0';
+		    for (testvec = topmod->reglist; testvec != NULL; testvec =
+				testvec->next) {
+			if (!strcmp(testvec->name, sigp)) {
+			    if (testvec->clock != NULL && testvec->clock != clocksig)
+			        fprintf(stderr, "Error:  Register signal %s is "
+					"assigned in two clock domain %s and %s\n",
+					sigp, testvec->clock->name, clocksig->name);
+			    else
+				testvec->clock = clocksig;
+			    break;
+			}
+		    }
+		    if (testvec == NULL) {
+			fprintf(stderr, "Error, line %d:  LHS %s is not a known"
+				" registered signal\n", line_num, sigp);
+		    }
+		    else {
+			if (token == sigp)	// Where "<=" was attached to name
+			    check_depend(topmod, sigp + 2, clocksig, (char)1);
+			else
+			    check_depend(topmod, sigp, clocksig, (char)1);
+		    }
+		}
+		else {
+		    // This is compute-intensive:  Check all tokens inside
+		    // clock blocks and outside of a comment for a match
+		    // to a known signal.  If we find one, it is added to
+		    // the list of signals used by the clock domain, recorded
+		    // in the structure for "clocksig".
+		    check_depend(topmod, token, clocksig, (char)0);
+		}
+	    }
+
 	    /* Proceed to next token */
 
 	    switch(state) {
@@ -1050,8 +1674,13 @@ main(int argc, char *argv[])
 		   break;
 	    }
 
-	    if (no_new_token == 0)
+	    if (no_new_token == 0) {
+	       if (token != NULL) {
+	          if (lasttok != NULL) free(lasttok);
+	          lasttok = strdup(token);
+	       }
 	       token = strtok(NULL, toklist);
+	    }
 	    no_new_token = 0;
 	}
 
@@ -1072,7 +1701,113 @@ main(int argc, char *argv[])
 
     fclose(fsource);
     if (finit != NULL) fclose(finit);
-    if (fclk != NULL) fclose(fclk);
-    if (ftmp != NULL) fclose(ftmp);
-    exit(0);
+    if (ftmp) fclose(ftmp);
+
+    /* Next step:  Handling multiple clock domains.			*/
+    /* First, determine if there is a need for splitting up the file.	*/
+    /* If not, then we're done.						*/
+
+    /* (1) Get a count of independent clock domains.	*/
+
+    if (topmod->clocklist) {
+	sigact *clocklist;
+	for (clocklist = topmod->clocklist; clocklist != NULL; clocklist =
+		clocklist->next)
+	    multidomain++;
+
+	if (multidomain > 1) {
+	   fprintf(stderr, "WARNING: System has multiple clock domains: ");
+	   for (clocklist = topmod->clocklist; clocklist != NULL; clocklist =
+			clocklist->next) {
+	       fprintf(stderr, "%s ", clocklist->name);
+	   }
+	   fprintf(stderr, "\n");
+	   // fprintf(stderr, "This condition is not handled by the preprocessor!\n");
+	}
+    }
+
+    /* (2) Check how many of the clock signals are assignments instead	*/
+    /*	   of a system input.  If all clock signals are assignments,	*/
+    /*	   then we need an extra domain where we generate all the	*/
+    /*	   assignments.  Otherwise, all assignments will be put in the	*/
+    /*     first clock domain found for with the clock signal is a	*/
+    /*	   system input.						*/
+
+    if (topmod->clocklist) {
+	sigact *clocklist;
+	char   *clockname;
+	vector *clknet;
+
+	for (clocklist = topmod->clocklist; clocklist != NULL; clocklist =
+		clocklist->next) {
+	    clockname = clocklist->name;
+
+	    clknet = topmod->iolist;
+	    while (clknet != NULL) {
+		if (clknet->vector_size == 0) {
+		    if (!strcmp(clknet->name, clockname))
+			break;
+		}
+		else {
+		    if (!strncmp(clknet->name, clockname, strlen(clknet->name)))
+			break;
+		}
+		clknet = clknet->next;
+	    }
+	    if (clknet != NULL) {
+	 	combdomain = clocklist;
+		break;
+	    }
+	}
+
+	if (combdomain == NULL) {
+	    /* All clocks were not found in the I/O list */
+	    if (multidomain == 1) {
+	       fprintf(stderr, "WARNING: Clock net %s is an assigned value.\n",
+			topmod->clocklist->name);
+	       // fprintf(stderr, "This condition is not handled by the preprocessor!\n");
+	    }
+	}
+    }
+
+    if (multidomain == 0) return 0;				// We're done
+    if (multidomain == 1 && combdomain != NULL) return 0;	// Also done
+
+    /* From this point, the file that was just written is re-read,	*/
+    /* split into individual files, each with one module having a	*/
+    /* single clock signal;  with possibly one additional module	*/
+    /* containing everything (e.g., wire assignments) that is outside	*/
+    /* of any clock block.						*/
+
+    sprintf(locfname, "%s_tmp.v", topmod->name);
+
+    fsource = fopen(locfname, "r");
+    if (fsource == NULL) {
+	fprintf(stderr, "Error:  Cannot open \"%s\" for reading.\n", locfname);
+	return 0;
+    }
+
+    k = 0;
+    for (clocksig = topmod->clocklist; clocksig; clocksig = clocksig->next) {
+	if (clocksig == combdomain) continue;	// Save until last
+
+	/* Open a new file for the single domain output */
+
+	sprintf(locfname, "_domain_%d.v", ++k);
+	ftmp = fopen(locfname, "w");
+
+	write_single_domain(fsource, ftmp, clocksig, topmod, combdomain, &wiredomain);
+
+	fclose(ftmp);
+    }
+
+    // The clock domain that also defines all combinatorial values is output
+    // last (or if there is none, then a combinatorial-only domain is output)
+
+    sprintf(locfname, "_domain_%d.v", ++k);
+    ftmp = fopen(locfname, "w");
+    write_single_domain(fsource, ftmp, combdomain, topmod, combdomain, &wiredomain);
+    fclose(ftmp);
+    fclose(fsource);
+    return 0;
 }

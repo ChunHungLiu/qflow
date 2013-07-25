@@ -174,9 +174,13 @@ int main ( int argc, char *argv[])
 
 }
 
-/*--------------------------------------------------------------------------------*/
-/* Parse the genlib file to get the pin names for the buffer and flop/latch cells */
-/*--------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------*/
+/* Parse the genlib file to get the pin names for the buffer and flop/latch	*/
+/* cells.  NOTE:  This is deprecated with the use of "abc", which doesn't	*/
+/* accept LATCH	entries in the genlib file.  Instead, we'll have to rewrite	*/
+/* this to read a LEF file.  For now, we expect to find LATCH entries in the	*/
+/* genlib file, but commented out.						*/
+/*------------------------------------------------------------------------------*/
 
 void ReadGenlib(char *techName, struct BufCell *bufCell, struct FlopCell *flopCell)
 {
@@ -198,11 +202,14 @@ void ReadGenlib(char *techName, struct BufCell *bufCell, struct FlopCell *flopCe
     }
 
     while (loc_getline(line, sizeof(line), inFile) > 0) {
-	if (sscanf(line, "%s %s", type, cellname) == 2) {
+	char *lineptr = line;
+	if (*lineptr == '#') lineptr++;
+	while (*lineptr == ' ') lineptr++;
+	if (sscanf(lineptr, "%s %s", type, cellname) == 2) {
 	    if (!have_buffer && !strcmp(type, "GATE")) {
 	       if (need_control) need_control = FALSE;
 	       if (!strcmp(cellname, bufCell->name)) {
-		   if (sscanf(line, "%*s %*s %*g %s = %s", pin1, pin2) == 2) {
+		   if (sscanf(lineptr, "%*s %*s %*g %s = %s", pin1, pin2) == 2) {
 		      bufCell->pin_out = strdup(pin1);
 		      if ((scptr = strchr(pin2, ';')) != NULL) *scptr = '\0';
 		      bufCell->pin_in = strdup(pin2);
@@ -211,7 +218,7 @@ void ReadGenlib(char *techName, struct BufCell *bufCell, struct FlopCell *flopCe
 		   else {
 		      fprintf(stderr, "Error:  Gate %s found in %s, but definition:\n",
 				bufCell->name, techName);
-		      fprintf(stderr, "  '%s'\n", line);
+		      fprintf(stderr, "  '%s'\n", lineptr);
 		      fprintf(stderr, "doesn't match expected syntax:\n");
 		      fprintf(stderr, "  'GATE %s <value> <pin_out> = <pin_in>;\n",
 				bufCell->name);
@@ -222,7 +229,7 @@ void ReadGenlib(char *techName, struct BufCell *bufCell, struct FlopCell *flopCe
 	    else if (!strcmp(type, "LATCH")) {
 	       if (need_control) need_control = FALSE;
 	       if (!have_flop && !strcmp(cellname, flopCell->name)) {
-		   if (sscanf(line, "%*s %*s %*g %s = %s", pin1, pin2) == 2) {
+		   if (sscanf(lineptr, "%*s %*s %*g %s = %s", pin1, pin2) == 2) {
 		      flopCell->pin_out = strdup(pin1);
 		      if ((scptr = strchr(pin2, ';')) != NULL) *scptr = '\0';
 		      flopCell->pin_in = strdup(pin2);
@@ -231,7 +238,7 @@ void ReadGenlib(char *techName, struct BufCell *bufCell, struct FlopCell *flopCe
 		   else {
 		      fprintf(stderr, "Error:  Latch %s found in %s, but definition:\n",
 				flopCell->name, techName);
-		      fprintf(stderr, "  '%s'\n", line);
+		      fprintf(stderr, "  '%s'\n", lineptr);
 		      fprintf(stderr, "doesn't match expected syntax:\n");
 		      fprintf(stderr, "  'LATCH %s <value> <pin_out> = <pin_in>;\n",
 				bufCell->name);

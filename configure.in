@@ -122,41 +122,23 @@ AC_ARG_WITH(odin_II,
    AC_PATH_PROG(QFLOW_ODIN_PATH, odin_II.exe, , )])
 
 AC_DEFINE_UNQUOTED(QFLOW_ODIN_PATH, "$QFLOW_ODIN_PATH")
-QFLOW_ODIN_PATH=${ac_cv_path_QFLOW_ODIN_PATH%/odin_II.exe}
 
-dnl Path to SIS
+dnl Path to abc
 
-AC_ARG_WITH(sis,
-[  --with-sis=DIR		path to SIS executable], [
+AC_ARG_WITH(abc,
+[  --with-abc=DIR		path to ABC executable], [
    if test -d "$withval"; then
-      QFLOW_SIS_DIR=$withval
+      QFLOW_ABC_DIR=$withval
    elif test -f "$withval"; then
-      # Path includes "/sis";  remove it
-      QFLOW_SIS_DIR=${withval%/sis}
+      # Path includes "/abc";  remove it
+      QFLOW_ABC_DIR=${withval%/abc}
    else
-      QFLOW_SIS_DIR=${PATH}
+      QFLOW_ABC_DIR=${PATH}
    fi
-   AC_PATH_PROG(QFLOW_SIS_PATH, sis, , $QFLOW_SIS_DIR)
+   AC_PATH_PROG(QFLOW_ABC_PATH, abc, , $QFLOW_ABC_DIR)
 ], [
-   AC_PATH_PROG(QFLOW_SIS_PATH, sis, , )])
-AC_DEFINE_UNQUOTED(QFLOW_SIS_PATH, "$QFLOW_SIS_PATH")
-
-dnl Path to VIS
-
-AC_ARG_WITH(vis,
-[  --with-vis=DIR		path to VIS executable], [
-   if test -d "$withval"; then
-      QFLOW_VIS_DIR=$withval
-   elif test -f "$withval"; then
-      # Path includes "/vis";  remove it
-      QFLOW_VIS_DIR=${withval%/vis}
-   else
-      QFLOW_VIS_DIR=vis
-   fi
-   AC_PATH_PROG(QFLOW_VIS_PATH, vis, , $QFLOW_VIS_DIR)
-], [
-   AC_PATH_PROG(QFLOW_VIS_PATH, vis, , )])
-AC_DEFINE_UNQUOTED(QFLOW_VIS_PATH, "$QFLOW_VIS_PATH")
+   AC_PATH_PROG(QFLOW_ABC_PATH, abc, , )])
+AC_DEFINE_UNQUOTED(QFLOW_ABC_PATH, "$QFLOW_ABC_PATH")
 
 AC_ARG_WITH(libdir,
 [  --with-libdir=DIR			path to qflow runtime files], [
@@ -240,29 +222,12 @@ AC_ARG_WITH(projectroot,
    QFLOW_PROJECT_ROOT=.
 ])
 
-# If only Odin-II or VIS was found, that becomes the default
-# verilog parser.  If both are found, then Odin-II becomes
-# the default parser and VIS may be substituted with the
-# appropriate option to qflow.
-
-if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
-   if test "x${ac_cv_path_QFLOW_VIS_PATH}" != "x"; then
-      QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_VIS_PATH}
-   else
-      QFLOW_DEFAULT_PARSER=NONE
-   fi
-else
-   QFLOW_DEFAULT_PARSER=${ac_cv_path_QFLOW_ODIN_PATH}
-fi
-
 dnl AC_SUBST(QFLOW_QROUTER_PATH)
 dnl AC_SUBST(QFLOW_MAGIC_PATH)
 dnl AC_SUBST(QFLOW_TWRC_PATH)
-dnl AC_SUBST(QFLOW_SIS_PATH)
-dnl AC_SUBST(QFLOW_VIS_PATH)
+dnl AC_SUBST(QFLOW_ABC_PATH)
 dnl AC_SUBST(QFLOW_ODIN_PATH)
 AC_SUBST(QFLOW_TW_PATH)
-AC_SUBST(QFLOW_DEFAULT_PARSER)
 
 AC_SUBST(QFLOW_BIN_DIR)
 AC_SUBST(QFLOW_LIB_DIR)
@@ -299,30 +264,16 @@ else
    echo "Using qrouter detail route tool at: ${ac_cv_path_QFLOW_QROUTER_PATH}"
 fi
 
-if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
-   if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
-      echo "ERROR: VIS not found.  Use --with-vis=<DIR>"
-   else
-      echo "NOTE: VIS not found, using odin_II for parser.  Use --with-vis=<DIR>"
-   fi
-else
-   echo "Using VIS verilog parsing tool at: ${ac_cv_path_QFLOW_VIS_PATH}"
-fi
-
 if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
-   if test "x${ac_cv_path_QFLOW_VIS_PATH}" == "x"; then
-      echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
-   else
-      echo "NOTE: odin_II not found, using VIS for parser.  Use --with-odin_II=<DIR>"
-   fi
+   echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
 else
    echo "Using odin_II verilog parsing tool at: ${ac_cv_path_QFLOW_ODIN_PATH}"
 fi
 
-if test "x${ac_cv_path_QFLOW_SIS_PATH}" == "x"; then
-   echo "ERROR: SIS not found.  Use --with-sis=<DIR>"
+if test "x${ac_cv_path_QFLOW_ABC_PATH}" == "x"; then
+   echo "ERROR: ABC not found.  Use --with-abc=<DIR>"
 else
-   echo "Using SIS logic optimization tool at: ${ac_cv_path_QFLOW_SIS_PATH}"
+   echo "Using ABC logic optimization tool at: ${ac_cv_path_QFLOW_ABC_PATH}"
 fi
 
 if test "x${ac_cv_path_QFLOW_MAGIC_PATH}" == "x"; then

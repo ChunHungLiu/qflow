@@ -15,8 +15,8 @@ QFLOW_BIN_DIR = @QFLOW_BIN_DIR@
 DEFAULTPARSER = @QFLOW_DEFAULT_PARSER@
 
 TCL_SCRIPTS = bdnet2cel.tcl clocktree.tcl place2def2.tcl place2lef2.tcl
-TCL_SCRIPTS += place2net2.tcl postproc.tcl setreset.tcl
-TCL_SCRIPTS += addspacers.tcl vispreproc.tcl
+TCL_SCRIPTS += place2net2.tcl postproc.tcl setreset.tcl vmunge.tcl
+TCL_SCRIPTS += addspacers.tcl vispreproc.tcl outputprep.tcl
 SHELL_SCRIPTS = placement.sh router.sh synthesize.sh
 SHELL_SCRIPTS += resynthesize.sh qflow.sh checkdirs.sh
 SHELL_SCRIPTS += cleanup.sh display.sh createGDS.sh

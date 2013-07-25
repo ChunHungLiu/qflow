@@ -22,21 +22,17 @@ The ./configure needs arguments for each tool of the tool
 chain that is not in the standard search path.  Qflow will
 need to be able to find the following tools:
 
-	sis
+	odin-ii
+	abc
 	TimberWolf
 	qrouter
 	magic
 
-and one or more of the following:
 
-	vis
-	odin-ii
-
-All tools except TimberWolf and odin-ii typically install in a
-standard location that is in the normal user path.  TimberWolf
-typically compiles into its own source path, and odin-ii may
-either do the same, or it may be compiled as part of the tool
-set "vtr".
+"qrouter" and "magic" typically install in a standard location
+that is in the normal user path.  TimberWolf typically compiles
+into its own source path, and odin-ii and abc may either do the
+same, or they may be compiled as part of the tool set "vtr".
 
 --------------------------------------------------------------
 "qflow" is the original verilog digital flow from
@@ -64,13 +60,10 @@ opencircuitdesign, reorganized for the following reasons:
     can be searched for by autoconf, or passed as arguments
     to the configure script
 
-(7) Should make it easy to switch between verilog compilers
-    (i.e., vis/sis vs. odinII/sis, maybe others eventually)
-
-(8) Try to convert and handle all files in standard formats:
+(7) Try to convert and handle all files in standard formats:
     mainly RTL verilog, LEF, and DEF.
    
-(9) Consolidate all configuration information into a single
+(8) Consolidate all configuration information into a single
     config file that can call out each tool or tools for
     which the configuration information applies, much like
     TimberWolf does, except extended to include the other

@@ -38,10 +38,7 @@ else
    echo			a file called qflow_vars.sh.
    echo	      <source_name> is the root name of the verilog file, and
    echo	  options:
-   echo	      -v <parser> forces use of a specific verilog parser,
-   echo			providing the full path to the parser.  Otherwise, VIS
-   echo			will be used, as it is expected to be installed in a
-   echo			standard search path.
+   echo			Options are passed to AddIOtoBDNet
    exit 1
 endif
 
@@ -49,16 +46,10 @@ set projectpath=$argv1
 set sourcename=$argv2
 set rootname=${sourcename:h}
 
-set parser=vis
-
 set options=""
 eval set argv=\($argline:q\)
 while ($#argv > 0)
    switch (${1:q})
-      case -v:
-	 shift
-         set parser=${1:q}
-         breaksw
       case --:
          break
       default:
@@ -68,9 +59,11 @@ while ($#argv > 0)
    shift
 end
 
+#---------------------------------------------------------------------
 # This script is called with the first argument <project_path>, which should
 # have file "qflow_vars.sh".  Get all of our standard variable definitions
 # from the qflow_vars.sh file.
+#---------------------------------------------------------------------
 
 if (! -f ${projectpath}/qflow_vars.sh ) then
    echo "Error:  Cannot find file qflow_vars.sh in path ${projectpath}"
@@ -85,146 +78,99 @@ cd ${projectpath}
 rm -f ${synthlog} >& /dev/null
 touch ${synthlog}
 
-# Preprocessor removes "initial" blocks from the verilog
-# source and saves the initial states in a ".init" file
-# for post-processing
+#---------------------------------------------------------------------
+# Preprocessor removes reset value initialization blocks
+# from the verilog source and saves the initial states in
+# a ".init" file for post-processing
+#---------------------------------------------------------------------
 
 cd ${sourcedir}
 ${bindir}/vpreproc ${rootname}.v
 
-# Stuff ideosyncratic to VIS.  We will force syntax
-# that VIS can handle, and write it back to the same
-# filename as was created by vpreproc
+# Hack for Odin-II bug:  to be removed when bug is fixed
+${scriptdir}/vmunge.tcl ${rootname}.v
+mv ${rootname}_munge.v ${rootname}_tmp.v
 
-if ("x$parser" == "xvis") then
+#---------------------------------------------------------------------
+# Run odin_ii on the verilog source to get a BLIF output file
+#---------------------------------------------------------------------
 
-   ${scriptdir}/vispreproc.tcl ${rootname}_tmp.v
-   if ( -f ${rootname}_tmp_vis.v ) then
-      mv ${rootname}_tmp_vis.v ${rootname}_tmp.v
-   endif
+echo "Running Odin_II for verilog parsing and synthesis"
+eval ${bindir}/odin_ii -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
 
-   ${bindir}/vis >>& ${synthlog} << EOF
-read_verilog ${rootname}_tmp.v
-write_blif ${rootname}.blif
-quit
-EOF
+#---------------------------------------------------------------------
+# Check for Odin-II compile-time errors
+#---------------------------------------------------------------------
 
-   #---------------------------------------------------------------------
-   # Check for VIS compile-time errors
-   #---------------------------------------------------------------------
-
-   set errline=`cat ${synthlog} | grep "No file has been read in" | wc -l`
-   if ( $errline == 1 ) then
-      echo ""
-      echo "Verilog compile errors occurred:"
-      echo "See file ${synthlog} for details."
-      echo "----------------------------------"
-      cat ${synthlog} | grep "^line"
-      echo ""
-      exit 1
-   endif
-
-else
-
-   # "$parser" should be a pointer to the odin_II executable
-
-   eval $parser -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
-
-   #---------------------------------------------------------------------
-   # Check for Odin-II compile-time errors
-   #---------------------------------------------------------------------
-
-   set errline=`cat ${synthlog} | grep "Odin has decided you have failed" | wc -l`
-   if ( $errline == 1 ) then
-      echo ""
-      echo "Verilog compile errors occurred:"
-      echo "See file ${synthlog} for details."
-      echo "----------------------------------"
-      cat ${synthlog} | grep "^line"
-      echo ""
-      exit 1
-   endif
-
+set errline=`cat ${synthlog} | grep "Odin has decided you have failed" | wc -l`
+if ( $errline == 1 ) then
+   echo ""
+   echo "Verilog compile errors occurred:"
+   echo "See file ${synthlog} for details."
+   echo "----------------------------------"
+   cat ${synthlog} | grep "^line"
+   echo ""
+   exit 1
 endif
 
-${bindir}/sis >> ${synthlog} << EOF
-read_blif ${rootname}.blif
+#---------------------------------------------------------------------
+# Clean up latches in odin_ii output (abc doesn't like init state = 3)
+#---------------------------------------------------------------------
+
+cat ${rootname}.blif | sed -e '/\.latch/s/3$/0/' > ${rootname}_tmp.blif
+
+#---------------------------------------------------------------------
+# Logic optimization with abc, using the standard "resyn2" script from
+# the distribution (see file abc.rc).  Map to the standard cell set and
+# write a netlist-type BLIF output file of the mapped circuit.
+#---------------------------------------------------------------------
+
+echo "Running abc for logic optimization"
+${bindir}/abc >> ${synthlog} << EOF
+read_blif ${rootname}_tmp.blif
 read_library ${techdir}/${techname}.genlib
-
-sweep; eliminate -1
-simplify -m nocomp
-eliminate -1
-
-sweep; eliminate 5
-simplify -m nocomp
-resub -a
-
-fx
-resub -a; sweep
-
-eliminate -1; sweep
-full_simplify -m nocomp
-
-map -n 0 -s
-write_bdnet ${rootname}.bdnet
+read_super ${techdir}/${techname}.super
+balance; rewrite; refactor; balance; rewrite; rewrite -z
+balance; refactor -z; rewrite -z; balance
+map
+write_blif ${rootname}_mapped.blif
 quit
 EOF
 
-echo ""
-echo "Please check ${sourcedir}/${rootname}.bdnet with a text editor."
-echo "Right column numbers must be unique."
-echo ""
-
 #---------------------------------------------------------------------
-# Check whether any clocks are used before automatically inserting one...
+# Odin_II appends "top^" to top-level signals, we want to remove these.
+# It also replaces vector indexes with "~" which we want to recast to
+# <>
 #---------------------------------------------------------------------
 
-set clkpins=`cat ${rootname}.bdnet | grep -c UNCONNECTED`
+echo "Cleaning Up blif file syntax"
+cat ${rootname}_mapped.blif | sed -e "s/top^//g" \
+	-e "s/~\([0-9]*\)/<\1>/g" \
+	> ${rootname}_tmp.blif
 
-if ( "$clkpins" > 0 ) then
-
-    # force spaces inside the parentheses, then count by field to get clock name
-    set clkname=`cat ${rootname}.v | grep always | grep posedge |\
-	sed -e '/)/s/)/ )/' -e '/(/s/(/( /' -e '/ /s/  / /g' | cut -d' ' -f 4`
-
-    cat ${rootname}.bdnet |\
-	sed -e /UNCONNECTED/s/UNCONNECTED/\"$clkname\"/ |\
-	sed -e '/^INPUT/a\\
-	"@@" : "@@"' |\
-	sed -e /@@/s/@@/$clkname/g > ${synthdir}/${rootname}.bdnet
-else
-    cp ${rootname}.bdnet ${synthdir}/${rootname}.bdnet
 endif
+
+#---------------------------------------------------------------------
+# Generate a BDNET netlist from the BLIF output, place it in synthdir
+#---------------------------------------------------------------------
+
+echo "Creating BDNET netlist"
+${bindir}/blifrtl2bdnet ${rootname}_tmp.blif > ${synthdir}/${rootname}_tmp.bdnet
 
 # Switch to synthdir for processing of the BDNET netlist
 cd ${synthdir}
-
-if ("x$parser" == "xvis") then
-
-   # NOTE:  CleanUpBDnet is only to be used with SIS/VIS flow.
-   echo "Running CleanUpBDnet"
-   ${bindir}/CleanUpBDnet -f -b ${rootname}.bdnet > ${rootname}_tmp.bdnet
-
-else
-
-   # Odin_II appends "top^" to top-level signals, we want to remove these.
-   # It also replaces vector indexes with "~" which we want to recast to
-   # <>
-   echo "Cleaning Up BDnet file syntax"
-   cat ${rootname}.bdnet | sed -e "s/top^//g" \
-	-e "s/~\([0-9]*\)/<\1>/g" \
-	> ${rootname}_tmp.bdnet
-
-endif
 
 #---------------------------------------------------------------------
 # Add initial conditions with set and reset flops
 #---------------------------------------------------------------------
 
-echo "Running postproc"
+echo "Generating resets for register flops"
 ${scriptdir}/postproc.tcl ${rootname}_tmp.bdnet \
  	${sourcedir}/${rootname}.init \
 	${techdir}/${techname}.sh
+
+echo "Renaming outputs for buffering"
+${scriptdir}/outputprep.tcl ${rootname}_tmp.bdnet
 
 echo "Running AddIO2BDnet"
 ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
