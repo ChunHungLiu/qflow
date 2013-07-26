@@ -65,7 +65,6 @@ typedef struct _vector {
    int vector_size;		// zero means signal is not a vector
    int vector_start;
    int vector_end;
-   signal *bits;		// allocated list of individual bits
    vecptr next;
 } vector;
 
@@ -96,13 +95,15 @@ typedef struct _parameter {
 #define  MAIN_BODY	0x0008		// Main body of module, after I/O list
 #define  SENS_LIST	0x0010		// Parsing a sensitivity list
 #define  IN_CLKBLOCK	0x0020		// Within a begin...end block after always()
-#define  IN_IFELSE	0x0040		// Within an if...else condition
-#define  IN_IFBLOCK	0x0080		// Within a begin...end block after if()
-#define  COMMENT	0x0100		// Within a C-type comment
-#define  ASSIGNMENT_LHS	0x0200		// In a multi-line assignment
-#define  ASSIGNMENT_RHS	0x0400		// In a multi-line assignment
-#define  WIRE		0x0800		// In a wire declaration
-#define  REGISTER	0x1000		// In a register declaration
+#define  PEND_CLKBLOCK	0x0040		// Within a begin...end block after always()
+#define  IN_IFTEST	0x0080		// Within an "if" test condition
+#define  IF_PENDING	0x0100		// Waiting for the end of the "if" test
+#define  IN_IFBLOCK	0x0200		// Within a begin...end block after if()
+#define  COMMENT	0x0400		// Within a C-type comment
+#define  ASSIGNMENT_LHS	0x0800		// In a multi-line assignment
+#define  ASSIGNMENT_RHS	0x1000		// In a multi-line assignment
+#define  WIRE		0x2000		// In a wire declaration
+#define  REGISTER	0x4000		// In a register declaration
 
 // Edge types
 #define  NEGEDGE	1
@@ -304,7 +305,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 
 		     if (idx != 0) {
 			fprintf(stderr, "Line %d:  Vector LHS is set by single bit"
-				" on RHS.  Padding by repitition.\n", line_num);
+				" on RHS.  Padding by repetition.\n", line_num);
 		     }
 		  }
 	       }
@@ -389,7 +390,9 @@ main(int argc, char *argv[])
     int line_num;
     int start, end, ival, i, j, k;
     int blocklevel;
+    int iflevel, ifcancel;
     int no_new_token;
+    int parm;
     int condition;
     char edgetype;
     char suspend;		/* When =1, suspend output */
@@ -458,7 +461,9 @@ main(int argc, char *argv[])
     suspend = (char)0;
     line_num = 1;
     no_new_token = 0;	/* If 1, don't move to next token */
-    blocklevel = 0;	/* Nesting of begin...end blocks */
+    blocklevel = 0;	/* Nesting of begin...end blocks outside a conditional */
+    iflevel = 0;	/* Nesting of begin...end blocks inside a conditional */
+    ifcancel = 0;	/* Remove "if" statements on this level */
     condition = UNKNOWN;
     multidomain = 0;
     toklist = " \t\n";	/* Default token list at beginning (state HEADER_STUFF) */
@@ -486,48 +491,55 @@ main(int argc, char *argv[])
 		if (!strncmp(token, "//", 2)) {
 		    break;	// Forget rest of line and read next line
 		}
-	    }
-	    if (!strcmp(token, "parameter") || !strcmp(token, "`define")) {
-		toklist = " \t\n=;";
-		/* Get parameter name */
-	        token = strtok(NULL, toklist);
-		if (token != NULL) {
-		   parameter *newparam = (parameter *)malloc(sizeof(parameter));
-		   newparam->name = strdup(token);
-		   newparam->next = NULL;
 
-		   /* Get parameter value */
-	           token = strtok(NULL, toklist);
-		   newparam->value = strdup(token);
+		if (!strcmp(token, "parameter") || !(parm = strcmp(token, "`define"))) {
+		    toklist = " \t\n=;";
+		    /* Get parameter name */
+	            token = strtok(NULL, toklist);
+		    if (token != NULL) {
+			parameter *newparam = (parameter *)malloc(sizeof(parameter));
+			if (!parm) {
+			    newparam->name = (char *)malloc(2 + strlen(token));
+			    sprintf(newparam->name, "`%s", token);
+			}
+			else {
+			    newparam->name = strdup(token);
+			}
+			newparam->next = NULL;
 
-		   /* Sort tokens by size to avoid substituting	part	*/
-		   /* of a parameter (e.g., "START" and "START1" should	*/
-		   /* not be ambiguous!)				*/
+			/* Get parameter value */
+			token = strtok(NULL, toklist);
+			newparam->value = strdup(token);
 
-		   if (params == NULL)
-		      params = newparam;
-		   else {
-		      parameter *pptr, *lptr;
-		      lptr = NULL;
-		      for (pptr = params; pptr; pptr = pptr->next) {
-			 if (strlen(pptr->name) < strlen(newparam->name)) {
-			    if (lptr == NULL) {
-			       newparam->next = params;
-			       params = newparam;
+			/* Sort tokens by size to avoid substituting	*/
+			/* part of a parameter (e.g., "START" and	*/
+			/* "START1" should not be ambiguous!)		*/
+
+			if (params == NULL)
+			    params = newparam;
+			else {
+			    parameter *pptr, *lptr;
+			    lptr = NULL;
+			    for (pptr = params; pptr; pptr = pptr->next) {
+				if (strlen(pptr->name) < strlen(newparam->name)) {
+				    if (lptr == NULL) {
+					newparam->next = params;
+					params = newparam;
+				    }
+				    else {
+					newparam->next = lptr->next;
+					lptr->next = newparam;
+				    }
+				    break;
+				}
+				lptr = pptr;
 			    }
-			    else {
-			       newparam->next = lptr->next;
-			       lptr->next = newparam;
-			    }
-			    break;
-			 }
-			 lptr = pptr;
-		      }
-		      if (pptr == NULL) lptr->next = newparam;
-		   }
+			    if (pptr == NULL) lptr->next = newparam;
+			}
+		    }
+		    suspend = 2;	/* Don't output this line */
+		    break;		/* No further processing on this line */
 		}
-		suspend = 2;		/* Don't output this line */
-		break;			/* No further processing on this line */
 	    }
 
 	    /* State-dependent processing */
@@ -571,6 +583,23 @@ main(int argc, char *argv[])
 		        state = MAIN_BODY;		// Return to main body processing
 		    }
 		    else if (sscanf(token, "%d", &ival) == 1) {
+		       char *aptr;
+		       int aval;
+
+		       // Quick check for simple arithmetic (+/-) in
+		       // vector size specification.  Need to
+		       // expand this to include processing (+/-) as
+		       // individual tokens. . .
+
+		       if ((aptr = strchr(token, '-')) != NULL) {
+			  if (sscanf(aptr + 1, "%d", &aval) == 1)
+			     ival -= aval;
+		       }
+		       else if ((aptr = strchr(token, '+')) != NULL) {
+			  if (sscanf(aptr + 1, "%d", &aval) == 1)
+			     ival += aval;
+		       }
+
 		       if (start == -1)
 			  start = ival;
 		       else if (end == -1)
@@ -591,9 +620,17 @@ main(int argc, char *argv[])
 		          if (DEBUG) printf("Adding new I/O signal \"%s\"\n", token);
 		       }
 		       else if (state & WIRE) {
-		          newvec->next = topmod->wirelist;
-		          topmod->wirelist = newvec;
-		          if (DEBUG) printf("Adding new wire \"%s\"\n", token);
+			  if (*token == '=') {
+			     // This is a statement "wire <name> = <assignment>"
+			     state = MAIN_BODY | ASSIGNMENT_LHS;
+			     no_new_token = 1;
+			     break;
+			  }
+			  else {
+		             newvec->next = topmod->wirelist;
+		             topmod->wirelist = newvec;
+		             if (DEBUG) printf("Adding new wire \"%s\"\n", token);
+			  }
 		       }
 		       else if (state & REGISTER) {
 		          newvec->next = topmod->reglist;
@@ -612,10 +649,7 @@ main(int argc, char *argv[])
 		          newvec->vector_size = -1;
 		       newvec->vector_start = start;
 		       newvec->vector_end = end;
-		       newvec->bits = NULL;
 		       state = nextstate;
-		       start = -1;
-		       end = -1;
 		    }
 		    break;
 
@@ -683,39 +717,7 @@ main(int argc, char *argv[])
 		    break;
 
 		case SENS_LIST:
-		    if (!strcmp(token, "begin")) {
-			state &= ~SENS_LIST;
-			state |= IN_CLKBLOCK;
-			testreset = NULL;
-			resetsig = NULL;
-			blocklevel++;
-
-			// NOTE:  To-do:  Generate inverted clock signal for
-			// use with negedge statements!
-
-			// Regenerate always @() line with posedge clock only
-			if (ftmp != NULL && clocksig != NULL) {
-			    fprintf(ftmp, "always @( posedge %s ) begin\n",
-					clocksig->name);
-			}
-			suspend = 1;
-		    }
-		    else if (!strcmp(token, "if")) {
-			state &= ~SENS_LIST;
-			state |= IN_CLKBLOCK | IN_IFELSE;
-			testreset = NULL;
-			resetsig = NULL;
-			blocklevel++;
-
-			// Regenerate always @() line with posedge clock only,
-			// no reset, and no "begin" line
-			if (ftmp != NULL && clocksig != NULL) {
-			    fprintf(ftmp, "always @( posedge %s ) \n",
-					clocksig->name);
-			}
-			suspend = 1;
-		    }
-		    else if (!strcmp(token, "posedge")) {
+		    if (!strcmp(token, "posedge")) {
 		        edgetype = POSEDGE;
 		    }
 		    else if (!strcmp(token, "negedge")) {
@@ -728,6 +730,10 @@ main(int argc, char *argv[])
 		       // ignore this, too
 		    }
 		    else {
+		       // Catch the end of the sensitivity list
+		       bptr = strchr(token, ')');
+		       if (bptr != NULL) *bptr = '\0';	
+
 		       if (edgetype == POSEDGE || edgetype == NEGEDGE) {
 		          /* Parse this signal */
 		          if (clocksig == NULL) {
@@ -775,6 +781,19 @@ main(int argc, char *argv[])
 		          }
 		          if (DEBUG) printf("Adding clock or reset signal \"%s\"\n",
 					token);
+
+			  if (bptr != NULL) {
+			     *bptr = ')';
+			     state = PEND_CLKBLOCK;
+
+			     // Regenerate always @() line with posedge clock only,
+			     // no reset, and no termination (yet)
+			     if (ftmp != NULL && clocksig != NULL) {
+				fprintf(ftmp, "always @( posedge %s ) ",
+						clocksig->name);
+			     }
+			     suspend = 1;
+			  }
 		       }
 		       else {
 			  // This is one of those blocks where a sensitivity
@@ -786,53 +805,79 @@ main(int argc, char *argv[])
 		    }
 		    break;
 		
-		case IN_CLKBLOCK:
-		    if (!strncmp(token, "if", 2)) {
-			state |= IN_IFELSE;
-			suspend = 1;		// Re-enter suspended state on "if"
+		case PEND_CLKBLOCK:
+		    if (!strcmp(token, "begin")) {
+			state = IN_CLKBLOCK;
+			testreset = NULL;
+			resetsig = NULL;
+			blocklevel++;
+
+			// NOTE:  To-do:  Generate inverted clock signal for
+			// use with negedge statements!
+
+			// Finish always @() line
+			if (ftmp != NULL && clocksig != NULL) {
+			    fprintf(ftmp, " begin\n");
+			}
+			suspend = 2;
 		    }
-		    else if (!strcmp(token, "else")) {
-			state |= IN_IFELSE;
-			if (suspend == 1)
-			   suspend = 2;		// Pending exit suspended state
+		    else if (!strcmp(token, "if")) {
+			state = IN_CLKBLOCK | IN_IFTEST;
+			testreset = NULL;
+			resetsig = NULL;
+
+			// Regenerate always @() line with posedge clock only,
+			// no reset, and no "begin" line
+			if (ftmp != NULL && clocksig != NULL) {
+			    fprintf(ftmp, "\n");
+			}
+			suspend = 1;
 		    }
-		    else if (!strcmp(token, "end")) {
-			state = MAIN_BODY;	// Exit "always" block
-			blocklevel--;		// Blocklevel goes back to zero
+		    else {
+			if (ftmp != NULL) fprintf(ftmp, "\n");
+			state = IN_CLKBLOCK;
+			testreset = NULL;
+			resetsig = NULL;
+			initvec = NULL;
+			condition = -1;
+			suspend = 0;
 		    }
 		    break;
 
-		case (IN_CLKBLOCK | IN_IFELSE):
+		case IN_CLKBLOCK:
+
 		    if (!strcmp(token, "begin")) {
-			state |= IN_IFBLOCK;
 			blocklevel++;
 		    }
+		    else if (!strcmp(token, "end")) {
+			blocklevel--;
+			if (blocklevel == 0) {
+			    state = MAIN_BODY;		// done with this domain
+			}
+		    }
 		    else if (!strcmp(token, "if")) {
-		       /* Ignore "if" in "else if" */
+			state |= IN_IFTEST;
+			suspend = 1;			// suspend pending
 		    }
-
-		    // An "always" block may contain only if..else
-		    // and omit the "begin" and "end" block delimiters.
-		    // If so, then another "always" or an "endmodule"
-		    // forces the end of the "always" block.
-
-		    else if (!strcmp(token, "always")) {
-			state = MAIN_BODY;
-			no_new_token = 1;
-			blocklevel = 0;
-			break;
-		    } else if (!strcmp(token, "endmodule")) {
-			state = MAIN_BODY;
-			no_new_token = 1;
-			blocklevel = 0;
-			break;
+		    else if (!strcmp(token, "else")) {
+			if (suspend == 1) {		// done with reset clause
+			    state = IN_CLKBLOCK | IF_PENDING;
+			    suspend = 2;
+			    testreset = NULL;
+			}
+			else
+			    suspend = 1;		// suspend pending
 		    }
+		    break;
 
 		    // Otherwise, the next token should be a statement
 		    // of some sort.  If it's a reset condition assignment,
 		    // break it out of the code.
 
-		    else {	// Pick up RHS/LHS
+		case (IN_CLKBLOCK | IN_IFTEST) :
+
+		       // Pick up RHS/LHS
+
 		       if ((sptr = strrchr(token, ')')) != NULL) {
 			  *sptr = '\0';
 		       }
@@ -862,7 +907,6 @@ main(int argc, char *argv[])
 			  else {
 			     // This is not a reset signal assignment, so we
 			     // should cancel the suspend state.
-			     state &= ~IN_IFELSE;
 			     suspend = 0;
 			  }
 		       }
@@ -886,37 +930,58 @@ main(int argc, char *argv[])
 			      if ((condition == EQUAL && ival == 1) ||
 				  (condition == NOT_EQUAL && ival == 0)) {
 				 fprintf(finit, "%s\n", testreset->name);
-			      }
-			      else {
-				 /* This is a normal code block */
-				 suspend = 0;
-				 if (DEBUG) printf("Processing standard code block.\n");
+				 state = IN_CLKBLOCK | IF_PENDING;
 			      }
 			   }
 		       }
-		    }
+		       if (sptr != NULL) {
+			  *sptr = ')';
+			  // And fall through
+		       }
+		       else
+			  break;
 
+		case (IN_CLKBLOCK | IF_PENDING) :
+
+		    // Waiting for the ')' that ends the "if" test
+
+		    if ((sptr = strchr(token, ')')) != NULL) {
+			*sptr = '\0';
+			state = IN_CLKBLOCK | IN_IFBLOCK;
+			iflevel = 0;
+		    }
+		    else if (!strcmp(token, "begin")) {
+			// Plain "else begin"
+			iflevel++;
+			state = IN_CLKBLOCK | IN_IFBLOCK;
+		    }
 		    break;
 
-		case (IN_CLKBLOCK | IN_IFELSE | IN_IFBLOCK):
+		case (IN_CLKBLOCK | IN_IFBLOCK):
+		    if ((sptr = strchr(token, ';')) != NULL) {
+			*sptr = '\0';
+			// Use sptr to check for end-of-statement, below
+		    }
+
 		    if (!strcmp(token, "end")) {
-			blocklevel--;
-			if (blocklevel == 1) {
+			iflevel--;
+			if (iflevel == 0) {
 			    state &= ~IN_IFBLOCK;
-			    state &= ~IN_IFELSE;
-			    suspend = 2;		// Pending suspend exit
-			    testreset = NULL;
-			    initvec = NULL;
-			    condition = -1;
+			    if (ifcancel == 1 && suspend != 1) {
+				ifcancel = 0;
+				suspend = 2;
+			    }
+			    else if (suspend == 1)
+				ifcancel = 1;
 		        }
 		    }
 		    else if (!strcmp(token, "begin")) {		// Track nested begin/end
-			blocklevel++;
+			iflevel++;
 		    }
 		    else if (testreset != NULL && suspend == 1) {
 
 			// In the case that we have, e.g., "if (reset)", then
-			// "condition" will be unkownn.  Therefore assume a
+			// "condition" will be unknown.  Therefore assume a
 			// positive condition and output the reset signal
 			if (condition == UNKNOWN) {
 			    condition = EQUAL;
@@ -984,24 +1049,14 @@ main(int argc, char *argv[])
 			   }
 			}
 		    }
-		    break;
-
-		case (IN_IFELSE):
-		    if (!strcmp(token, "begin")) {
-			state &= ~IN_IFELSE;
-			state |= IN_IFBLOCK;
-		    }
-		    else if (!strcmp(token, "if")) {
-			/* In an "else if" block */
-		    }
-		    else {
-			/* Single-line statement, no block used */
-		    }
-		    break;
-
-		case (IN_IFBLOCK):
-		    if (!strcmp(token, "end")) {
-			state &= ~IN_IFBLOCK;
+		    if (sptr != NULL) {
+			*sptr = ';';
+			if (iflevel == 0) {
+			    if (blocklevel == 0)
+				state = MAIN_BODY;
+			    else
+				state = IN_CLKBLOCK;
+			}
 		    }
 		    break;
 
@@ -1034,15 +1089,18 @@ main(int argc, char *argv[])
 		   break;
 
 		case SENS_LIST:
-		   toklist = " \t\n()";
-		   break;
-
-		case IN_CLKBLOCK | IN_IFELSE:
 		   toklist = " \t\n(";
 		   break;
 
-		case IN_CLKBLOCK | IN_IFELSE | IN_IFBLOCK:
-		   toklist = " \t\n;";
+		case IN_CLKBLOCK:
+		   toklist = " \t\n;(";
+		   break;
+
+		case PEND_CLKBLOCK:
+		case IN_CLKBLOCK | IF_PENDING:
+		case IN_CLKBLOCK | IN_IFTEST:
+		case IN_CLKBLOCK | IN_IFBLOCK:
+		   toklist = " \t\n(";
 		   break;
 
 		default:
