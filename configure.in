@@ -245,7 +245,7 @@ AC_SUBST(LDFLAGS)
 AC_SUBST(LD)
 AC_SUBST(STDLIBS)
 
-AC_OUTPUT(Makefile scripts/Makefile src/Makefile tech/Makefile tech/osu035/Makefile)
+AC_OUTPUT(Makefile scripts/Makefile src/Makefile tech/Makefile tech/osu035/Makefile tech/osu050/Makefile)
 
 echo ""
 echo "Configuration results:"

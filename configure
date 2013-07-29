@@ -4414,7 +4414,7 @@ fi
 
 
 
-ac_config_files="$ac_config_files Makefile scripts/Makefile src/Makefile tech/Makefile tech/osu035/Makefile"
+ac_config_files="$ac_config_files Makefile scripts/Makefile src/Makefile tech/Makefile tech/osu035/Makefile tech/osu050/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -5139,6 +5139,7 @@ do
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
     "tech/Makefile") CONFIG_FILES="$CONFIG_FILES tech/Makefile" ;;
     "tech/osu035/Makefile") CONFIG_FILES="$CONFIG_FILES tech/osu035/Makefile" ;;
+    "tech/osu050/Makefile") CONFIG_FILES="$CONFIG_FILES tech/osu050/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac

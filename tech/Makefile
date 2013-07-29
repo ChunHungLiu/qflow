@@ -11,30 +11,27 @@ INSTALL = /usr/bin/install -c
 
 QFLOW_LIB_DIR = /usr/local/share/qflow
 
-TECH_DIRS = osu035
+TECH_DIRS = osu035 osu050
 
 TECHINSTALL = ${QFLOW_LIB_DIR}/tech
 
 all:
 	@echo "Making all in tech directories"
 	for target in $(TECH_DIRS); do \
-	   cd $$target ;\
-	   $(MAKE) all ;\
+	   (cd $$target ; $(MAKE) all) ;\
 	done
 
 install:
 	@echo "Installing built-in tech files"
 	$(INSTALL) -d ${TECHINSTALL}
 	for target in $(TECH_DIRS); do \
-	   cd $$target ;\
-	   $(MAKE) install ;\
+	   (cd $$target ; $(MAKE) install) ;\
 	done
 
 clean:
 	@echo "Cleaning up built-in tech files"
 	for target in $(TECH_DIRS); do \
-	   cd $$target ;\
-	   $(MAKE) clean ;\
+	   (cd $$target ; $(MAKE) clean) ;\
 	done
 
 
