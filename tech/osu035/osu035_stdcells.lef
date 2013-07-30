@@ -52,10 +52,10 @@ LAYER metal1
   CAPACITANCE	CPERSQDIST 3e-05 ;
 END metal1
 
-LAYER via
+LAYER via1
   TYPE	CUT ;
   SPACING	0.6 ;
-END via
+END via1
 
 LAYER metal2
   TYPE		ROUTING ;

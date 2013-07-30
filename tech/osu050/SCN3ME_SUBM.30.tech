@@ -1,5 +1,5 @@
 tech
-  format 29
+  format 32
  scmos
 end
 
@@ -7334,6 +7334,24 @@ drc
 #CC "generated CIF layer CSP spacing will be < 2 (';cif see CSP')"
 
  stepsize 400
+
+end
+
+#---------------------------------------------------
+# LEF format definitions
+#---------------------------------------------------
+
+lef
+
+ignore PC
+ignore CA
+
+routing m1   M1 m1 met1
+routing m2   M2 m2 met2
+routing m3   M3 m3 met3
+
+contact m2c via via1 V1 v1
+contact m3c via2 V2 v2
 
 end
 

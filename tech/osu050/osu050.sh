@@ -57,4 +57,4 @@ set vddnet=vdd		;# Name used for power pins in standard cells
 set separator=X		;# Separator between gate names and drive strengths
 set techfile=SCN3ME_SUBM.30	;# magic techfile
 set magicrc=osu050.magicrc	;# magic startup script
-set gdsfile=osu050_stdcells.gds	;# GDS database of standard cells
+set gdsfile=osu05_stdcells.gds	;# GDS database of standard cells
