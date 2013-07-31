@@ -55,6 +55,7 @@ install: $(TCL_SCRIPTS) $(SHELL_SCRIPTS) $(MAIN_SCRIPT)
 	   $(INSTALL) $$target ${SCRIPTINSTALL} ;\
 	done
 	@echo "Installing qflow executable"
+	$(INSTALL) -d ${EXECINSTALL}
 	$(INSTALL) ${MAIN_SCRIPT} ${EXECINSTALL}
 
 clean:

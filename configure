@@ -568,12 +568,6 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 STDLIBS
 LD
-QFLOW_PROJECT_ROOT
-QFLOW_TECH
-QFLOW_TECH_DIR
-QFLOW_LAYOUT_DIR
-QFLOW_SYNTH_DIR
-QFLOW_SOURCE_DIR
 QFLOW_LIB_DIR
 QFLOW_BIN_DIR
 QFLOW_TW_PATH
@@ -658,12 +652,6 @@ with_odin_II
 with_abc
 with_libdir
 with_bindir
-with_sourcedir
-with_synthdir
-with_layoutdir
-with_techdir
-with_techdefault
-with_projectroot
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1299,12 +1287,6 @@ Optional Packages:
   --with-abc=DIR		path to ABC executable
   --with-libdir=DIR			path to qflow runtime files
   --with-bindir=DIR			path to qflow launch script
-  --with-sourcedir=DIR			default path to verilog source
-  --with-synthdir=DIR			default path to synthesis files
-  --with-layoutdir=DIR			default path to layout files
-  --with-techdir=DIR			default path to tech files
-  --with-techdefault=DIR		default technology
-  --with-projectroot=DIR		default project root
 
 Some influential environment variables:
   CC          C compiler command
@@ -4272,11 +4254,7 @@ _ACEOF
 # Check whether --with-libdir was given.
 if test "${with_libdir+set}" = set; then :
   withval=$with_libdir;
-   if test -d "$withval"; then
-      QFLOW_LIB_DIR=$withval
-   else
-      QFLOW_LIB_DIR=${ac_default_prefix}/share/qflow
-   fi
+   QFLOW_LIB_DIR=$withval
 
 else
 
@@ -4289,117 +4267,13 @@ fi
 # Check whether --with-bindir was given.
 if test "${with_bindir+set}" = set; then :
   withval=$with_bindir;
-   if test -d "$withval"; then
-      QFLOW_BIN_DIR=$withval
-   else
-      QFLOW_BIN_DIR=${ac_default_prefix}/bin
-   fi
+   QFLOW_BIN_DIR=$withval
 
 else
 
    QFLOW_BIN_DIR=${ac_default_prefix}/bin
 
 fi
-
-
-
-# Check whether --with-sourcedir was given.
-if test "${with_sourcedir+set}" = set; then :
-  withval=$with_sourcedir;
-   if test -d "$withval"; then
-      QFLOW_SOURCE_DIR=$withval
-   else
-      QFLOW_SOURCE_DIR=source
-   fi
-
-else
-
-   QFLOW_SOURCE_DIR=source
-
-fi
-
-
-
-# Check whether --with-synthdir was given.
-if test "${with_synthdir+set}" = set; then :
-  withval=$with_synthdir;
-   if test -d "$withval"; then
-      QFLOW_SYNTH_DIR=$withval
-   else
-      QFLOW_SYNTH_DIR=synthesis
-   fi
-
-else
-
-   QFLOW_SYNTH_DIR=synthesis
-
-fi
-
-
-
-# Check whether --with-layoutdir was given.
-if test "${with_layoutdir+set}" = set; then :
-  withval=$with_layoutdir;
-   if test -d "$withval"; then
-      QFLOW_LAYOUT_DIR=$withval
-   else
-      QFLOW_LAYOUT_DIR=synthesis
-   fi
-
-fi
-
-
-
-# Check whether --with-techdir was given.
-if test "${with_techdir+set}" = set; then :
-  withval=$with_techdir;
-   if test -d "$withval"; then
-      QFLOW_TECH_DIR=$withval
-   else
-      QFLOW_TECH_DIR=${QFLOW_LIB_DIR}/tech
-   fi
-
-else
-
-   QFLOW_TECH_DIR=${QFLOW_LIB_DIR}/tech
-
-fi
-
-
-
-# Check whether --with-techdefault was given.
-if test "${with_techdefault+set}" = set; then :
-  withval=$with_techdefault;
-   QFLOW_TECH=$withval
-
-else
-
-   QFLOW_TECH=osu035
-
-fi
-
-
-
-# Check whether --with-projectroot was given.
-if test "${with_projectroot+set}" = set; then :
-  withval=$with_projectroot;
-   if test -d "$withval"; then
-      QFLOW_PROJECT_ROOT=$withval
-   else
-      QFLOW_PROJECT_ROOT=.
-   fi
-
-else
-
-   QFLOW_PROJECT_ROOT=.
-
-fi
-
-
-
-
-
-
 
 
 
