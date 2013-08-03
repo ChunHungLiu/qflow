@@ -96,7 +96,7 @@ mv ${rootname}_munge.v ${rootname}_tmp.v
 #---------------------------------------------------------------------
 
 echo "Running Odin_II for verilog parsing and synthesis"
-eval ${bindir}/odin_ii -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
+eval ${bindir}/odin_ii -U0 -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
 
 #---------------------------------------------------------------------
 # Check for Odin-II compile-time errors
@@ -114,10 +114,10 @@ if ( $errline == 1 ) then
 endif
 
 #---------------------------------------------------------------------
-# Clean up latches in odin_ii output (abc doesn't like init state = 3)
+# Clean up latch outputs in odin_ii output (remove trailing _FF_NODE)
 #---------------------------------------------------------------------
 
-cat ${rootname}.blif | sed -e '/\.latch/s/3$/0/' > ${rootname}_tmp.blif
+cat ${rootname}.blif | sed -e '/_FF_NODE/s/_FF_NODE//' > ${rootname}_tmp.blif
 
 #---------------------------------------------------------------------
 # Logic optimization with abc, using the standard "resyn2" script from
