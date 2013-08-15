@@ -1,4 +1,4 @@
-# osu035.par --- Parameter file for TimberWolf
+# osu050.par --- Parameter file for TimberWolf
 # NOTE:  all units are magic internal units, 1 unit = 90nm
 # This file ASSUMES that "scalegrid 1 9" has been executed on startup
 
@@ -6,24 +6,19 @@ RULES
     layer metal1 1.00 1.00 horizontal
     layer metal2 1.00 0.50 vertical
     layer metal3 1.00 0.10 horizontal
-    #layer metal4 0.10 0.05 vertical
 
     via via12 metal1 metal2
     via via23 metal2 metal3
-    #via via34 metal3 metal4
 
     width metal1 80
     width metal2 80
     width metal3 80
-    #width metal4 80
     width via12 80
     width via23 80
-    #width via34 80
 
     spacing metal1 metal1 160
     spacing metal2 metal2 160
     spacing metal3 metal3 160
-    #spacing metal4 metal4 160
 
     # Stacked vias allowed
     spacing via12 via23 0
@@ -35,8 +30,6 @@ RULES
     overhang via23 metal2 8
     overhang via23 metal3 6
 
-    #overhang via34 metal3 14
-    #overhang via34 metal4 16
 ENDRULES
 
 *vertical_wire_weight : 1.0

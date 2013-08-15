@@ -144,19 +144,24 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 {
    int vsize, vval, realsize;
    static char bitval[2] = "0";
-   char *bptr, typechar, *vptr, *fullvec = NULL;
+   char *bptr, typechar, *vptr, *fullvec = NULL, *vloc;
+   char *cptr = NULL, *newcptr;
    vector *testvec;
    int locidx;
    static char *fullname = NULL;
    
-   if (idx < 0) locidx = 0;
+   locidx = (idx < 0) ? 0 : idx;
 
-   if (vstr[0] == '{') {
-      /* To-do:  Deal with vectors constructed from sub-vectors */
+   vloc = vstr;
+
+   if (vloc[0] == '{') {
+      cptr = strrchr(vloc, ',');
+      if (cptr != NULL) vloc = cptr + 1;
    }	
-   else {
-      if (sscanf(vstr, "%d'%c", &vsize, &typechar) == 2) {
-	 bptr = strchr(vstr, typechar);
+
+   while (1) {
+      if (sscanf(vloc, "%d'%c", &vsize, &typechar) == 2) {
+	 bptr = strchr(vloc, typechar);
 	 vptr = bptr + 1;
 	 while (isalnum(*vptr)) vptr++;
 
@@ -170,7 +175,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	    for (vptr = fullvec; vptr < fullvec + vsize; vptr++) *vptr = '0';
 	    *vptr = '\0';
 	    vptr = bptr + 1;
-	    while (*vptr != '\0') {
+	    while (*vptr != '\0' && realsize >= 0) {
 	       *(fullvec + vsize - realsize) = *vptr;
 	       vptr++;
 	       realsize--;
@@ -188,7 +193,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 		  if (fullvec) free(fullvec);
 	 	  return bptr;
 	       case 'd':		// Interpret decimal
-		  vstr = bptr + 1;	// Move to start of decimal value and continue
+		  vloc = bptr + 1;	// Move to start of decimal value and continue
 		  break;	  
 	       case 'h':		// To-do:  Interpret hex
 		  *bitval = *(vptr - (locidx / 4));
@@ -211,11 +216,24 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	    }
 	 }
 	 else {
+	    if (cptr != NULL) {
+	       // Bundle; move forward and try again. . .
+	       *cptr = '\0';
+  	       newcptr = strrchr(vloc, ',');
+	       if (newcptr != NULL)
+		  vloc = newcptr + 1;
+	       else
+		  vloc = vstr + 1;
+	       *cptr = ',';
+	       cptr = newcptr;
+	       locidx -= vsize;
+	       continue;
+	    }
 	    fprintf(stderr, "Line %d:  Not enough bits for vector.\n", line_num);
 	    return NULL;
 	 }
       }
-      if (sscanf(vstr, "%d", &vval) == 1) {
+      if (sscanf(vloc, "%d", &vval) == 1) {
 	 vval >>= locidx;
 	 vval &= 0x1;
 	 bptr = bitval;
@@ -224,35 +242,49 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
       }	
       else {
 	 // Could be a signal name.  If so, check that it has a size
-	 // compatible with idx.
+	 // compatible with locidx.
 
-	 char *is_indexed = strchr(vstr, '[');
+	 char *is_indexed = strchr(vloc, '[');
 	 if (is_indexed) *is_indexed = '\0';
 
 	 for (testvec = topmod->wirelist; testvec != NULL; testvec = testvec->next)
-	    if (!strcmp(testvec->name, vstr))
+	    if (!strcmp(testvec->name, vloc))
 	       break;
 	 if (testvec == NULL)
 	    for (testvec = topmod->iolist; testvec != NULL; testvec = testvec->next)
-	       if (!strcmp(testvec->name, vstr))
+	       if (!strcmp(testvec->name, vloc))
 	          break;
 	 if (testvec == NULL)
 	    for (testvec = topmod->reglist; testvec != NULL; testvec = testvec->next)
-	       if (!strcmp(testvec->name, vstr))
+	       if (!strcmp(testvec->name, vloc))
 	          break;
 	 
 	 if (is_indexed) *is_indexed = '[';	/* Restore index delimiter */
 	 if (testvec == NULL) {
 	    fprintf(stderr, "Line %d: Cannot parse signal name \"%s\" for reset\n",
-			line_num, vstr);
+			line_num, vloc);
 	    return NULL;
 	 }
 	 else {
 	    /* To-do:  Need to make sure all vector indices are aligned. . . */
-	    if (idx == 0 && testvec->vector_size == 0) {
+	    if (locidx == 0 && testvec->vector_size == 0) {
 	       return testvec->name;
 	    }
-	    else if (idx >= testvec->vector_size) {
+	    else if (locidx >= testvec->vector_size) {
+	       if (cptr != NULL) {
+		  // Bundle; move backward and try next part
+
+		  *cptr = '\0';
+		  newcptr = strrchr(vstr, ',');
+		  if (newcptr != NULL)
+		     vloc = newcptr + 1;
+		  else
+		     vloc = vstr + 1;
+		  *cptr = ',';
+		  cptr = newcptr;
+		  locidx -= testvec->vector_size;
+		  continue;
+	       }
 	       fprintf(stderr, "Line %d:  Vector LHS exceeds dimensions of RHS.\n",
 			line_num);
 	       return NULL;
@@ -266,9 +298,9 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 		  if ((is_range = strchr(is_indexed + 1, ':')) != NULL) {
 		     sscanf(is_range + 1, "%d", &jend);
 	             if (jstart > jend)
-			j = jend + idx;
+			j = jend + locidx;
 		     else
-			j = jstart + idx;
+			j = jstart + locidx;
 
 		     if (testvec->vector_start > testvec->vector_end) {
 			if (j < testvec->vector_end) {
@@ -278,6 +310,18 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 			   j = testvec->vector_end;
 			}
 			else if (j > testvec->vector_start) {
+			   if (cptr != NULL) {
+		  	      *cptr = '\0';
+		  	      newcptr = strrchr(vstr, ',');
+		  	      if (newcptr != NULL)
+		  	         vloc = newcptr + 1;
+		  	      else
+		   	         vloc = vstr + 1;
+		  	      *cptr = ',';
+		  	      cptr = newcptr;
+		  	      locidx -= (jstart - jend + 1);
+		  	      continue;
+			   }
 			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
 					" %d to %d.\n", line_num,
 					testvec->vector_start, testvec->vector_end);
@@ -303,7 +347,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 		     // RHS is a single bit
 		     j = jstart;
 
-		     if (idx != 0) {
+		     if (locidx != 0) {
 			fprintf(stderr, "Line %d:  Vector LHS is set by single bit"
 				" on RHS.  Padding by repetition.\n", line_num);
 		     }
@@ -311,9 +355,9 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	       }
 	       else {
 	          if (testvec->vector_start > testvec->vector_end)
-		     j = testvec->vector_end + idx;
+		     j = testvec->vector_end + locidx;
 	          else
-		     j = testvec->vector_start + idx;
+		     j = testvec->vector_start + locidx;
 	       }
 
 	       if (fullname != NULL) free(fullname);
@@ -324,6 +368,7 @@ parse_bit(int line_num, module *topmod, char *vstr, int idx)
 	    }
 	 }
       }
+      break;
    }
 }
 
@@ -374,10 +419,11 @@ main(int argc, char *argv[])
     FILE *ftmp = NULL;
 
     char comment_pending;
-    char *xp, *fptr, *token, *sptr, *bptr, *filename;
+    char *xp, *fptr, *token, *sptr, *bptr, *filename, *cptr;
     char locfname[512];
     char linebuf[2048];
     char linecopy[2048];
+    char pbuf[2048];
     const char *toklist;
 
     module *topmod;
@@ -507,9 +553,21 @@ main(int argc, char *argv[])
 			}
 			newparam->next = NULL;
 
-			/* Get parameter value */
-			token = strtok(NULL, toklist);
-			newparam->value = strdup(token);
+			/* Get parameter value---only accept semicolon or a	*/
+			/* newline as a delimiter.  This will pick up the '='	*/
+			/* so we need to skip over it, and other whitespace.	*/
+
+			token = strtok(NULL, ";\n");
+			cptr = token;
+			while (isspace(*cptr)) cptr++;
+			if (*cptr == '=') cptr++;
+			while (isspace(*cptr)) cptr++;
+
+			/* Run "paramcpy" to make any parameter substitutions	*/
+			/* in the parameter itself.				*/
+
+			paramcpy(pbuf, cptr, params);
+			newparam->value = strdup(pbuf);
 
 			/* Sort tokens by size to avoid substituting	*/
 			/* part of a parameter (e.g., "START" and	*/
@@ -1020,11 +1078,21 @@ main(int argc, char *argv[])
 					// here, but we will handle them anyway.
 
 			   if (strlen(token) > 0) {
+			      // If token is a vector bundle, try to get all of it
+			      char *ltok = strdup(token);
+			      if (token[0] == '{' && strchr(token, '}') == NULL) {
+				 while (strchr(token, '}') == NULL) {
+				    token = strtok(NULL, toklist);
+				    ltok = realloc(ltok, strlen(token) + strlen(ltok) + 1);
+				    strcat(ltok, token);
+				 }
+			      }
+
 			      if (DEBUG) printf("Reset \"%s\" to \"%s\"\n",
-					initvec->name, token);
+					initvec->name, ltok);
 			      j = initvec->vector_start;
 
-			      if ((bptr = parse_bit(line_num, topmod, token, j)) != NULL) {
+			      if ((bptr = parse_bit(line_num, topmod, ltok, j)) != NULL) {
 
 				 // NOTE:  The finit file uses signal<idx> notation
 				 // compatible with the .bdnet file, not the signal[idx]
@@ -1039,13 +1107,14 @@ main(int argc, char *argv[])
 				       j--;
 				    else
 				       j++;
-			            bptr = parse_bit(line_num, topmod, token, j);
+			            bptr = parse_bit(line_num, topmod, ltok, j);
 				    if (bptr != NULL)
 				       fprintf(finit, "%s<%d> %s\n", initvec->name,
 						j, bptr);
 				 }
 			      }
 			      initvec = NULL;
+			      free(ltok);
 			   }
 			}
 		    }
