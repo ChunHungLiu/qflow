@@ -793,52 +793,55 @@ main(int argc, char *argv[])
 		       if (bptr != NULL) *bptr = '\0';	
 
 		       if (edgetype == POSEDGE || edgetype == NEGEDGE) {
-		          /* Parse this signal */
-		          if (clocksig == NULL) {
-			     clocksig = (sigact *)malloc(sizeof(sigact));
-			     clocksig->next = topmod->clocklist;
-			     topmod->clocklist = clocksig;
-			     clocksig->name = strdup(token);
-			     clocksig->edgetype = edgetype;
+		          if (strlen(token) > 0) {
+		             /* Parse this signal */
+		             if (clocksig == NULL) {
+			        clocksig = (sigact *)malloc(sizeof(sigact));
+			        clocksig->next = topmod->clocklist;
+			        topmod->clocklist = clocksig;
+			        clocksig->name = strdup(token);
+			        clocksig->edgetype = edgetype;
 
-			     // Check if this clock is in the module's input
-			     // list.  Add it to the <module_name>.clk
-			     // file, and indicate if it is in the module's
-			     // input list, and if it is a wire or a register.
-			     //
-			     // Note that if the clock is in the module's
-			     // output list it will be called an input;  this
-			     // is okay for our purpose (see vmunge.c).
+			        // Check if this clock is in the module's input
+			        // list.  Add it to the <module_name>.clk
+			        // file, and indicate if it is in the module's
+			        // input list, and if it is a wire or a register.
+			        //
+			        // Note that if the clock is in the module's
+			        // output list it will be called an input;  this
+			        // is okay for our purpose (see vmunge.c).
 
-			     for (testvec = topmod->iolist; testvec;
+			        for (testvec = topmod->iolist; testvec;
 						testvec = testvec->next)
-				if (!strcmp(testvec->name, clocksig->name))
-				    break;
-
-			     if (testvec != NULL)
-				fprintf(fclk, "%s input wire\n", clocksig->name);
-			     else {
-				 for (testvec = topmod->wirelist; testvec;
-						testvec = testvec->next)
-				    if (!strcmp(testvec->name, clocksig->name))
+				   if (!strcmp(testvec->name, clocksig->name))
 				       break;
 
-				 if (testvec != NULL)
-				    fprintf(fclk, "%s internal wire\n", clocksig->name);
-				 else
-				    fprintf(fclk, "%s internal register\n",
+			        if (testvec != NULL)
+				   fprintf(fclk, "%s input wire\n", clocksig->name);
+			        else {
+				    for (testvec = topmod->wirelist; testvec;
+						testvec = testvec->next)
+				       if (!strcmp(testvec->name, clocksig->name))
+				          break;
+
+				    if (testvec != NULL)
+				       fprintf(fclk, "%s internal wire\n",
 						clocksig->name);
-			     }
-		          }
-		          else {
-			     resetsig = (sigact *)malloc(sizeof(sigact));
-			     resetsig->next = topmod->resetlist;
-			     topmod->resetlist = resetsig;
-			     resetsig->name = strdup(token);
-			     resetsig->edgetype = edgetype;
-		          }
-		          if (DEBUG) printf("Adding clock or reset signal \"%s\"\n",
+				    else
+				       fprintf(fclk, "%s internal register\n",
+						clocksig->name);
+			        }
+		             }
+		             else {
+			        resetsig = (sigact *)malloc(sizeof(sigact));
+			        resetsig->next = topmod->resetlist;
+			        topmod->resetlist = resetsig;
+			        resetsig->name = strdup(token);
+			        resetsig->edgetype = edgetype;
+		             }
+		             if (DEBUG) printf("Adding clock or reset signal \"%s\"\n",
 					token);
+			  }
 
 			  if (bptr != NULL) {
 			     *bptr = ')';
