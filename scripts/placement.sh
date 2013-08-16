@@ -74,13 +74,6 @@ cd ${projectpath}
 
 cd ${layoutdir}
 
-# Check if rootname needs a "_buf" suffix
-
-if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
-   set origname=${rootname}
-   set rootname=${rootname}_buf
-endif
-
 # Check if a .cel2 file exists and needs to be appended to .cel
 # If the .cel2 file is newer than .cel, then truncate .cel and
 # re-append.

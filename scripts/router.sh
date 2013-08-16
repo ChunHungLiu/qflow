@@ -57,12 +57,6 @@ cd ${projectpath}
 
 cd ${layoutdir}
 
-# Check if rootname needs a "_buf" suffix
-
-if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
-   set rootname=${rootname}_buf
-endif
-
 #-----------------------------------------------
 # Create the detailed route.
 #-----------------------------------------------
@@ -70,8 +64,8 @@ endif
 ${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
 		${rootname} >>& ${synthlog}
 
-set origname=${rootname:s/_buf//}
-mv ${rootname}_route.def ${origname}.def
+mv ${rootname}.def ${rootname}_unroute.def
+mv ${rootname}_route.def ${rootname}.def
 
 #------------------------------------------------------------
 # Done!

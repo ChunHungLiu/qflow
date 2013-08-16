@@ -114,12 +114,6 @@ if ( $errline == 1 ) then
 endif
 
 #---------------------------------------------------------------------
-# Clean up latch outputs in odin_ii output (remove trailing _FF_NODE)
-#---------------------------------------------------------------------
-
-cat ${rootname}.blif | sed -e '/_FF_NODE/s/_FF_NODE//' > ${rootname}_tmp.blif
-
-#---------------------------------------------------------------------
 # Logic optimization with abc, using the standard "resyn2" script from
 # the distribution (see file abc.rc).  Map to the standard cell set and
 # write a netlist-type BLIF output file of the mapped circuit.
@@ -127,7 +121,7 @@ cat ${rootname}.blif | sed -e '/_FF_NODE/s/_FF_NODE//' > ${rootname}_tmp.blif
 
 echo "Running abc for logic optimization"
 ${bindir}/abc >> ${synthlog} << EOF
-read_blif ${rootname}_tmp.blif
+read_blif ${rootname}.blif
 read_library ${techdir}/${techname}.genlib
 read_super ${techdir}/${techname}.super
 balance; rewrite; refactor; balance; rewrite; rewrite -z
@@ -169,13 +163,22 @@ ${scriptdir}/postproc.tcl ${rootname}_tmp.bdnet \
  	${sourcedir}/${rootname}.init \
 	${techdir}/${techname}.sh
 
-echo "Renaming outputs for buffering"
-${scriptdir}/outputprep.tcl ${rootname}_tmp.bdnet
+echo "Restoring original names on internal DFF outputs"
+${scriptdir}/outputprep.tcl ${rootname}_tmp.bdnet ${rootname}.bdnet
 
-echo "Running AddIO2BDnet"
-${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
-	-b ${bufcell} -f ${flopcell} $options \
-	${rootname}_tmp.bdnet > ${rootname}_buf.bdnet
+#---------------------------------------------------------------------
+# NOTE:  To be restored, want to handle specific user instructions
+# to either double-buffer the outputs or to latch or double-latch
+# the inputs (asynchronous ones, specifically)
+#---------------------------------------------------------------------
+# echo "Running AddIO2BDnet"
+# ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
+# 	-b ${bufcell} -f ${flopcell} $options \
+# 	${rootname}_tmp.bdnet > ${rootname}_buf.bdnet
+
+# Make a copy of the original bdnet file, as this will be overwritten
+# by the fanout handling process
+cp ${rootname}.bdnet ${rootname}_bak.bdnet
 
 #---------------------------------------------------------------------
 # Check all gates for fanout load, and adjust gate strengths as
@@ -187,13 +190,13 @@ ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
 # command line (default is 18fF). . .
 #---------------------------------------------------------------------
 
-rm -f ${rootname}_buf_nofanout
-touch ${rootname}_buf_nofanout
+rm -f ${rootname}_nofanout
+touch ${rootname}_nofanout
 if ($?gndnet) then
-   echo $gndnet >> ${rootname}_buf_nofanout
+   echo $gndnet >> ${rootname}_nofanout
 endif
 if ($?vddnet) then
-   echo $vddnet >> ${rootname}_buf_nofanout
+   echo $vddnet >> ${rootname}_nofanout
 endif
 
 echo "Running BDnetFanout (iterative)"
@@ -201,11 +204,11 @@ echo "" >> ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
-      mv ${rootname}_buf.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_buf_nofanout \
+      mv ${rootname}.bdnet tmp.bdnet
+      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
-		tmp.bdnet ${rootname}_buf.bdnet >>& ${synthlog}
+		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}
       set nchanged=$status
       echo "nchanged=$nchanged"
    end
@@ -219,14 +222,14 @@ echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
 echo ""
 
 echo "Running BDnet2Verilog."
-${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}_buf.bdnet \
+${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.bdnet \
 	> ${rootname}.rtl.v
 
-${bindir}/BDnet2Verilog -p ${rootname}_buf.bdnet > ${rootname}.rtlnopwr.v
+${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
 
 echo "Running BDnet2BSpice."
 ${bindir}/BDnet2BSpice -p ${vddnet} -g ${gndnet} -l ${techdir}/${spicefile} \
-	${rootname}_buf.bdnet > ${rootname}_buf.spc
+	${rootname}.bdnet > ${rootname}.spc
 
 #-------------------------------------------------------------------------
 # Clean up after myself!
@@ -249,13 +252,18 @@ cd ${projectpath}
 #-------------------------------------------------------------------------
 
 echo "Running bdnet2cel.tcl"
-${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}_buf.bdnet \
+${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
-	${layoutdir}/${rootname}_buf.cel
+	${layoutdir}/${rootname}.cel
 
 # Don't overwrite an existing .par file.
-if (!(-f ${layoutdir}/${rootname}_buf.par)) then
-   cp ${techdir}/${techname}.par ${layoutdir}/${rootname}_buf.par
+if (!(-f ${layoutdir}/${rootname}.par)) then
+   cp ${techdir}/${techname}.par ${layoutdir}/${rootname}.par
 endif
 
-echo "Edit ${layoutdir}/${rootname}_buf.par, then run placement and route"
+#-------------------------------------------------------------------------
+# Notice about editing should be replaced with automatic handling of
+# user directions about what to put in the .par file, like number of
+# rows or cell aspect ratio, etc., etc.
+#-------------------------------------------------------------------------
+echo "Edit ${layoutdir}/${rootname}.par, then run placement and route"

@@ -89,7 +89,7 @@ set flopresetnet {}
 
 while {[gets $inet line] >= 0} {
    if [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
-      lappend flopsigs $signal
+      lappend flopsigs ${signal}_FF_NODE
       lappend floptypes $initcond
       lappend flopresetnet $resetnet
    } else {

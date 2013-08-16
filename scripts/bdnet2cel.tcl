@@ -26,7 +26,7 @@ set pitchx 160		;# value overridden from LEF file
 set pitchy 200		;# value overridden from LEF file
 
 set bdnetfile [lindex $argv 0]
-set cellname [file rootname $bdnetfile]
+set cellname [file rootname [file tail $bdnetfile]]
 if {"$cellname" == "$bdnetfile"} {
    set bdnetfile ${cellname}.bdnet
 }
