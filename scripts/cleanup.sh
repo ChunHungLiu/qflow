@@ -54,19 +54,21 @@ cd ${projectpath}
 # Cleanup verilog parsing files.  Leave the original source!
 #----------------------------------------------------------
 
-# Check if rootname needs a "_buf" suffix
-
 cd ${layoutdir}
 
+# Check if rootname needs a "_buf" suffix, which we use
+# when AddIO2BDnet is told to double-buffer the outputs.
+
+set origname=${rootname}
 if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
-   set origname=${rootname}
    set rootname=${rootname}_buf
 endif
-
 
 cd ${sourcedir}
 
 rm -f ${origname}.blif
+rm -f ${origname}_tmp.blif
+rm -f ${origname}_mapped.blif
 rm -f ${origname}.clk
 rm -f ${origname}.enc
 rm -f ${origname}.init
@@ -79,12 +81,16 @@ rm -f ${origname}_tmp.v
 
 cd ${synthdir}
 
-rm -f ${origname}.bdnet
+# rm -f ${origname}.bdnet
+rm -f ${origname}_bak.bdnet
+rm -f ${origname}_tmp.bdnet
 rm -f ${rootname}_orig.bdnet
 rm -f ${rootname}_buf_nofanout
 
 #----------------------------------------------------------
 # Clean up the (excessively numerous) Timberwolf files
+# Keep the input .cel and .par files, and the input
+# _unroute.def file and the final output .def file.  
 #----------------------------------------------------------
 
 cd ${layoutdir}
@@ -99,10 +105,7 @@ rm -f ${rootname}.txt ${rootname}.info
 rm -f ${rootname}.pin ${rootname}.pl1 ${rootname}.pl2
 rm -f ${rootname}.cfg
 
-rm -f ${origname}_unrouted.def
-if ( -f ${rootname}.def ) then
-   mv ${rootname}.def ${origname}_unrouted.def
-endif
+# rm -f ${origname}_unroute.def
 
 rm -f cn
 rm -f failed

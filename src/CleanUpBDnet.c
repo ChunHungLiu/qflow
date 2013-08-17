@@ -1,5 +1,8 @@
 // CleanUpBDnet
 //
+// This tool cleans up the BDnet output files created by VIS and SIS.
+// The qflow chain now uses Odin-II and ABC, so this file is no longer used.
+//
 // Revision 0, version 1   2006-11-11: First release by R. Timothy Edwards.
 // Revision 1, version 1.1 2009-07-13: Minor cleanups by Philipp Klaus Krause.
 //
@@ -19,10 +22,10 @@
 #define FALSE		0
 #define NMOS		1
 #define PMOS		0
-#define LengthOfNodeName  100
-#define LengthOfLine    200
-#define MaxNumberOfInputs 100
-#define MaxNumberOfOutputs 100
+#define LengthOfNodeName  	512
+#define LengthOfLine    	512
+#define MaxNumberOfInputs 	512
+#define MaxNumberOfOutputs 	512
 #define LengthOfInOutString 10000
 #define NumberOfUniqueConnections 6
 

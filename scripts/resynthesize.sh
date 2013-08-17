@@ -68,17 +68,17 @@ touch ${synthlog}
 # nets, not just the clock).
 #---------------------------------------------------------------------
 
-if (-f ${layoutdir}/${rootname}_buf.pin ) then
+if (-f ${layoutdir}/${rootname}.pin ) then
    echo "" >> synth.log
-   ${scriptdir}/clocktree.tcl ${rootname}_buf ${synthdir} \
+   ${scriptdir}/clocktree.tcl ${rootname} ${synthdir} \
 		${layoutdir} ${techdir}/${leffile} ${bufcell}
 else
-   echo "Error:  No pin file ${layoutdir}/${rootname}_buf.pin."
+   echo "Error:  No pin file ${layoutdir}/${rootname}.pin."
    echo "Did you run initial_placement.sh on this design?"
    exit 1
 endif
 
-if (!(-f ${synthdir}/${rootname}_buf_tmp.bdnet)) then
+if (!(-f ${synthdir}/${rootname}_tmp.bdnet)) then
    echo "Error in clocktree.tcl:  No modified netlist was created."
    exit 1
 endif
@@ -87,9 +87,9 @@ endif
 # one over it.
 
 cd ${synthdir}
-cp ${rootname}_buf.bdnet ${rootname}_buf_orig.bdnet
-cp ${rootname}_buf_tmp.bdnet ${rootname}_buf.bdnet
-rm -f ${rootname}_buf_tmp.bdnet
+cp ${rootname}.bdnet ${rootname}_orig.bdnet
+cp ${rootname}_tmp.bdnet ${rootname}.bdnet
+rm -f ${rootname}_tmp.bdnet
 
 #---------------------------------------------------------------------
 # Check all gates for fanout load, and adjust gate strengths as
@@ -106,11 +106,11 @@ echo "" >> ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
-      mv ${rootname}_buf.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_buf_nofanout \
+      mv ${rootname}.bdnet tmp.bdnet
+      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
-		tmp.bdnet ${rootname}_buf.bdnet >>& ${synthlog}
+		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}
       set nchanged=$status
       echo "nchanged=$nchanged"
    end
@@ -124,14 +124,14 @@ echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
 echo ""
 
 echo "Running BDnet2Verilog."
-${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}_buf.bdnet \
+${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.bdnet \
 	> ${rootname}.rtl.v
 
-${bindir}/BDnet2Verilog -p ${rootname}_buf.bdnet > ${rootname}.rtlnopwr.v
+${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
 
 echo "Running BDnet2BSpice."
-${bindir}/BDnet2BSpice ${rootname}_buf.bdnet -p ${vddnet} -g ${gndnet} \
-	-l ${techdir}/${spicefile} > ${rootname}_buf.spc
+${bindir}/BDnet2BSpice ${rootname}.bdnet -p ${vddnet} -g ${gndnet} \
+	-l ${techdir}/${spicefile} > ${rootname}.spc
 
 #-------------------------------------------------------------------------
 # Clean up after myself!
@@ -150,8 +150,8 @@ rm -f ${sourcedir}/${rootname}.bdnet
 #-------------------------------------------------------------------------
 
 echo "Running bdnet2cel.tcl"
-${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}_buf.bdnet \
+${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
-	${layoutdir}/${rootname}_buf.cel
+	${layoutdir}/${rootname}.cel
 
 echo "Now re-run placement, and route"

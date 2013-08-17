@@ -20,11 +20,13 @@
 #define FALSE		0
 #define NMOS		1
 #define PMOS		0
-#define LengthOfNodeName  100
-#define LengthOfLine    200
-#define MaxNumberOfInputs 100
-#define MaxNumberOfOutputs 100
+// These really need to be allocated---need to rewrite!
+#define LengthOfNodeName	512
+#define LengthOfLine    	512
+#define MaxNumberOfInputs 	512
+#define MaxNumberOfOutputs 	512
 #define LengthOfInOutString 10000
+
 #define NumberOfUniqueConnections 6
 
 /* getopt stuff */
