@@ -248,7 +248,7 @@ while {[gets $fpin line] >= 0} {
 	    if {[eval [subst {lsearch \$${cellname}(output) $pinname}]] >= 0} {
 	       dict set outputs $netname [list $instance $pinname]
 	    } elseif {[eval [subst {lsearch \$${cellname}(input) $pinname}]] >= 0} {
-	       set ilist [list $pinname $px $py -1]
+	       set ilist [list $pinname $px $py -1 {}]
 	       if [catch {set inst [dict get $nets $netname]}] {
 	          set inst [dict create]
 	          dict set nets $netname $inst
@@ -275,6 +275,11 @@ dict for {netname inst} $nets {
       puts stdout "Breaking net into $subnets subnets" 
 
       # Clustering algorithm (Voronoi tessalation)
+      # Modified 8/19/2013 to ensure a maximum number of entries in a
+      # single cluster.
+      #
+      # NOTE:  Need to check when number of clusters exceeds maxfanout;
+      # currently the "tree" is only 1 deep.
 
       set centers {}
       set idxused {}
@@ -294,27 +299,107 @@ dict for {netname inst} $nets {
 	 }
       }
 
-      # Should 20 iterations be enough?
+      # 10 iterations is sort of arbitrary. . . algorithm usually
+      # doesn't change after 7 or 8 cycles.
 
-      for {set i 0} {$i < 20} {incr i} {
+      for {set i 0} {$i < 10} {incr i} {
 	 # For each terminal in the net, find the closest centroid
+	 # but keep the list of calculated distances to all centroids
+	 # in case the one at minimum distance is overcrowded.
+
+	 set members [lrepeat $subnets 0]
          dict for {instname ilist} $inst {
 	    set px [lindex $ilist 1]
 	    set py [lindex $ilist 2]
-	    set cluster 0
-	    set mindist [** 2 63]		;# maximum positive integer
+	    set dists {}
 	    foreach cpair $centers {
 	       set difx [- $px [lindex $cpair 0]]
 	       set dify [- $py [lindex $cpair 1]]
 	       set sqdist [+ [* $difx $difx] [* $dify $dify]]
-	       if {$sqdist < $mindist} {
-		  set mindist $sqdist
-		  set cidx $cluster
-	       }
-               incr cluster
+	       lappend dists $sqdist
 	    }
-	    dict set inst $instname [lreplace $ilist 3 3 $cidx]
+	    set cidx [lindex [lsort -indices $dists] 0]
+	    set members [lreplace $members $cidx $cidx [+ 1 [lindex $members $cidx]]]
+	        
+	    dict set inst $instname [lreplace $ilist 3 4 $cidx $dists]
 	 }
+
+	 # Restrict membership reduction to the last 5 passes, so that the
+	 # grouping is already mostly correct
+
+	 if {$i >= 5} {
+
+	 # For any groups whose membership exceeds maxfanout, find the members
+	 # that are closest to another group with membership < maxfanout
+	 # and reassign them to that group.
+
+	 for {set j 0} {$j < $subnets} {incr j} {
+	    if {[lindex $members $j] > $maxfanout} {
+
+	       set mintest {}	 ;# Create a new list
+	       dict for {instname ilist} $inst {
+		  # Find which member has the smallest next-to-minimum distance
+		  if {[lindex $ilist 3] == $j} {
+		     set dists [lindex $ilist 4]
+		     for {set k 0} {$k < $subnets} {incr k} {
+			if {$k != $j} {
+			   lappend mintest [list [lindex $dists $k] $k $instname]
+			}
+		     }
+		  }
+	       }
+	    }
+	    while {[lindex $members $j] > $maxfanout} {
+	       set tidx [lindex [lsort -indices -index 0 $mintest] 0]
+	       set mentry [lindex $mintest $tidx]
+
+	       # puts -nonewline stdout "Reducing membership in group $j"
+	       # puts stdout " from [lindex $members $j] to 16"
+	       # puts stdout "tidx = $tidx"
+	       # puts stdout "mentry = $mentry"
+	       # flush stdout
+
+	       set cidx [lindex $mentry 1]
+	       set mininst [lindex $mentry 2]
+	       if {[lindex $members $cidx] < $maxfanout} {
+		  # puts -nonewline stdout "Group $cidx has [lindex $members $cidx]"
+		  # puts stdout " members;  room to grow!"
+		  set ilist [dict get $inst $mininst]
+		  if {[lindex $ilist 3] != $j} {
+		     puts -nonewline stdout "ERROR:  Entry has group "
+		     puts stdout "[lindex $ilist 3], NOT $j!"
+	 	  }
+	          dict set inst $mininst [lreplace $ilist 3 3 $cidx]
+		  set members [lreplace $members $j $j [- [lindex $members $j] 1]]
+		  set members [lreplace $members $cidx $cidx \
+				[+ [lindex $members $cidx] 1]]
+
+		  # Make sure that other entries in $mintest with $mininst are
+		  # disabled from the search.
+		  foreach entry [lsearch -all -exact -index 2 $mintest $mininst] {
+		     set mintest [lreplace $mintest $entry $entry [list [** 2 63] 0 0]]
+		  }
+	       }
+	       set mintest [lreplace $mintest $tidx $tidx [list [** 2 63] 0 0]]
+	    }
+	    # puts stdout "Group $j done."
+
+	    # puts stdout "Checking:"
+	    # puts stdout "Member count says: [lindex $members $j]"
+	 }
+
+ 	 # puts stdout "Full cross-check:"
+	 # for {set j 0} {$j < $subnets} {incr j} {
+	 #    puts stdout "Member count 1 for group $j is: [lindex $members $j]"
+	 #    set mcount 0
+         #    dict for {instname ilist} $inst {
+	 #       if {[lindex $ilist 3] == $j} {incr mcount}
+	 #    }
+	 #    puts stdout "Member count 2 for group $j is: $mcount"
+	 # }
+
+	 }	;# i >= 5
+
 	 # Recompute the centroids
 	 set temp {}
          for {set j 0} {$j < $subnets} {incr j} {
@@ -350,12 +435,17 @@ dict for {netname inst} $nets {
       set clusters [dict create]
       for {set i 0} {$i < $subnets} {incr i} {
 	 puts stdout "Cluster $i:"
+	 set check 0
          dict for {instname ilist} $inst {
 	    set cidx [lindex $ilist 3]
 	    if {$cidx == $i} {
 	       set pinname [lindex $ilist 0]
 	       puts stdout "${instname}/${pinname}"
 	       dict set clusters "${instname}/${pinname}" $i
+	       incr check
+	       if {$check > $maxfanout} {
+		  puts stdout "ERROR: Fanout exceeds maximum!  Cannot happen!"
+	       }
 	    }
 	 }
       }
@@ -409,7 +499,7 @@ while {[gets $fnet line] >= 0} {
       puts $fout $line
       set mode $macroname
       
-      if {[catch {set j [dict get $counts $mode]}]} {set j 0}
+      if {[catch {set j [dict get $counts $mode]}]} {set j 1}
       set cellinst "${mode}_$j"
       dict set counts $mode [+ 1 $j]
 

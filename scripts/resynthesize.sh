@@ -69,9 +69,10 @@ touch ${synthlog}
 #---------------------------------------------------------------------
 
 if (-f ${layoutdir}/${rootname}.pin ) then
-   echo "" >> synth.log
+   echo "" >> ${synthlog}
    ${scriptdir}/clocktree.tcl ${rootname} ${synthdir} \
-		${layoutdir} ${techdir}/${leffile} ${bufcell}
+		${layoutdir} ${techdir}/${leffile} ${bufcell} \
+		>> ${synthlog}
 else
    echo "Error:  No pin file ${layoutdir}/${rootname}.pin."
    echo "Did you run initial_placement.sh on this design?"
