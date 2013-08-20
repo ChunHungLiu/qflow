@@ -138,8 +138,20 @@ EOF
 #---------------------------------------------------------------------
 
 echo "Cleaning Up blif file syntax"
+
+# The following definitions will replace "LOGIC0" and "LOGIC1"
+# with buffers from gnd and vdd, respectively.  This takes care
+# of technologies where tie-low and tie-high cells are not
+# defined.
+
+set subs0a="/LOGIC0/s/O=/${bufpin_in}=gnd ${bufpin_out}=/"
+set subs0b="/LOGIC0/s/LOGIC0/${bufcell}/"
+set subs1a="/LOGIC1/s/O=/${bufpin_in}=vdd ${bufpin_out}=/"
+set subs1b="/LOGIC1/s/LOGIC1/${bufcell}/"
+
 cat ${rootname}_mapped.blif | sed -e "s/top^//g" \
 	-e "s/~\([0-9]*\)/<\1>/g" \
+	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
 	> ${rootname}_tmp.blif
 
 endif
