@@ -48,6 +48,7 @@ if (! -f ${projectpath}/qflow_vars.sh ) then
 endif
 
 source ${projectpath}/qflow_vars.sh
+source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 #----------------------------------------------------------
@@ -80,7 +81,27 @@ else
    set lefcmd="lef read ${techdir}/${techleffile}\nlef read ${techdir}/${techleffile}"
 endif
 
-/usr/local/bin/magic -dnull -noconsole <<EOF
+# Timestamp handling:  If the .mag file is more recent
+# than the .def file, then print a message and do not
+# overwrite.
+
+set docreate=1
+if ( -f ${rootname}.def && -f ${rootname}.mag) then
+   set defstamp=`stat --format="%Y" ${rootname}.def`
+   set magstamp=`stat --format="%Y" ${rootname}.mag`
+   if ( $magstamp > $defstamp ) then
+      echo "Magic database file ${rootname}.mag is more recent than DEF file."
+      echo "If you want to recreate the .mag file, remove or rename the existing one."
+      set docreate=0
+   endif
+endif
+
+# The following script reads in the DEF file and modifies labels so
+# that they are rotated outward from the cell, since DEF files don't
+# indicate label geometry.
+
+if ( ${docreate} == 1) then
+${bindir}/magic -dnull -noconsole <<EOF
 drc off
 box 0 0 0 0
 snap int
@@ -112,6 +133,32 @@ setlabel just e
 save ${sourcename}
 quit -noprompt
 EOF
+
+endif
+
+# Run magic and query what graphics device types are
+# available.  Use OpenGL if available, fall back on
+# X11, or else exit with a message
+
+${bindir}/magic -noconsole -d <<EOF >& .magic_displays
+exit
+EOF
+
+set magicogl=`cat .magic_displays | grep OGL | wc -l`
+set magicx11=`cat .magic_displays | grep X11 | wc -l`
+
+rm -f .magic_displays
+
+# Run magic again, this time interactively.  The script
+# exits when the user exits magic.
+
+if ( ${magicogl} >= 1 ) then
+   ${bindir}/magic -d OGL ${rootname}
+else if ( ${magicx11} >= 1) then
+   ${bindir}/magic -d X11 ${rootname}
+else
+   echo "Magic does not support OpenGL or X11 graphics on this host."
+endif
 
 #------------------------------------------------------------
 # Done!

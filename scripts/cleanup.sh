@@ -85,7 +85,7 @@ cd ${synthdir}
 rm -f ${origname}_bak.bdnet
 rm -f ${origname}_tmp.bdnet
 rm -f ${rootname}_orig.bdnet
-rm -f ${rootname}_buf_nofanout
+rm -f ${rootname}_nofanout
 
 #----------------------------------------------------------
 # Clean up the (excessively numerous) Timberwolf files
