@@ -31,7 +31,7 @@ if {$argc < 3} {
 # NOTE:  There is no scaling.  TimberWolf values are in centimicrons,
 # as are DEF values (UNITS DISTANCE MICRONS 100)
 
-puts stdout "Running place2def.tcl"
+puts stdout "Running place2def2.tcl"
 
 set topname [lindex $argv 0]
 
