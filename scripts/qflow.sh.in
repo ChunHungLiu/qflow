@@ -78,6 +78,24 @@ while ($#argv > 0)
 	 set actions=1
 	 shift
 	 breaksw
+      case build:
+	 set dosynth=1
+	 set doplace=1
+	 set dobuffer=1
+	 set doroute=1
+	 set actions=1
+	 shift
+	 breaksw
+      case all:
+	 set dosynth=1
+	 set doplace=1
+	 set dobuffer=1
+	 set doroute=1
+	 set doclean=1
+	 set dodisplay=1
+	 set actions=1
+	 shift
+	 breaksw
       case clean:
       case cleanup:
 	 set doclean=1
@@ -106,6 +124,9 @@ if ($dohelp == 1 || $#argv != 0) then
    echo "            route			Run final placement and route"
    echo "            clean			Remove temporary working files"
    echo "            display			Display routed result"
+   echo ""
+   echo "	     build			Run scripts synthesize to route"
+   echo "	     all			Run scripts synthesize to display"
    echo ""
    echo "Options:    -T, --tech <name>		Use technology <name>"
    echo "	     -p, --project <name>	Project root directory is <name>"
