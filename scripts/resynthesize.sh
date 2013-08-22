@@ -69,18 +69,20 @@ touch ${synthlog}
 #---------------------------------------------------------------------
 
 if (-f ${layoutdir}/${rootname}.pin ) then
-   echo "" >> ${synthlog}
+   echo "Running clocktree"
+   echo "" |& tee -a ${synthlog}
    ${scriptdir}/clocktree.tcl ${rootname} ${synthdir} \
 		${layoutdir} ${techdir}/${leffile} ${bufcell} \
 		>> ${synthlog}
 else
-   echo "Error:  No pin file ${layoutdir}/${rootname}.pin."
-   echo "Did you run initial_placement.sh on this design?"
+   echo "Error:  No pin file ${layoutdir}/${rootname}.pin." |& tee -a ${synthlog}
+   echo "Did you run initial_placement.sh on this design?" |& tee -a ${synthlog}
    exit 1
 endif
 
 if (!(-f ${synthdir}/${rootname}_tmp.bdnet)) then
-   echo "Error in clocktree.tcl:  No modified netlist was created."
+   echo "Error in clocktree.tcl:  No modified netlist was created." \
+		|& tee -a ${synthlog}
    exit 1
 endif
 
@@ -102,8 +104,8 @@ rm -f ${rootname}_tmp.bdnet
 # command line (default is 18fF). . .
 #---------------------------------------------------------------------
 
-echo "Running BDnetFanout (iterative)"
-echo "" >> ${synthlog}
+echo "Running BDnetFanout (iterative)" |& tee -a ${synthlog}
+echo "" |& tee -a ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
@@ -113,24 +115,27 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}
       set nchanged=$status
-      echo "nchanged=$nchanged"
+      echo "nchanged=$nchanged" |& tee -a ${synthlog}
    end
 endif
 
-echo ""
-echo "Generating RTL verilog and SPICE netlist file in directory ${synthdir}"
-echo "Files:"
-echo "   Verilog: ${synthdir}/${rootname}.rtl.v"
-echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
-echo ""
+echo "" |& tee -a ${synthlog}
+echo "Generating RTL verilog and SPICE netlist file in directory" \
+	|& tee -a ${synthlog}
+echo "   ${synthdir}" |& tee -a ${synthlog}
+echo "Files:" |& tee -a ${synthlog}
+echo "   Verilog: ${synthdir}/${rootname}.rtl.v" |& tee -a ${synthlog}
+echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v" |& tee -a ${synthlog}
+echo "   Spice:   ${synthdir}/${rootname}.spc" |& tee -a ${synthlog}
+echo "" |& tee -a ${synthlog}
 
-echo "Running BDnet2Verilog."
+echo "Running BDnet2Verilog." |& tee -a ${synthlog}
 ${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.bdnet \
 	> ${rootname}.rtl.v
 
 ${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
 
-echo "Running BDnet2BSpice."
+echo "Running BDnet2BSpice." |& tee -a ${synthlog}
 ${bindir}/BDnet2BSpice ${rootname}.bdnet -p ${vddnet} -g ${gndnet} \
 	-l ${techdir}/${spicefile} > ${rootname}.spc
 
@@ -150,9 +155,9 @@ rm -f ${sourcedir}/${rootname}.bdnet
 # (Assume that the .par file was already made the first time through)
 #-------------------------------------------------------------------------
 
-echo "Running bdnet2cel.tcl"
+echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
 ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
-	${layoutdir}/${rootname}.cel
+	${layoutdir}/${rootname}.cel >>& ${synthlog}
 
-echo "Now re-run placement, and route"
+echo "Now re-run placement, and route" |& tee -a ${synthlog}

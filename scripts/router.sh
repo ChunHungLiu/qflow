@@ -61,8 +61,10 @@ cd ${layoutdir}
 # Create the detailed route.
 #-----------------------------------------------
 
+echo "Running qrouter"
 ${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
-		${rootname} >>& ${synthlog}
+		${rootname} |& tee -a ${synthlog} | \
+		grep - -e fail -e Progess -e TotalRoutes.\*00
 
 mv ${rootname}.def ${rootname}_unroute.def
 mv ${rootname}_route.def ${rootname}.def

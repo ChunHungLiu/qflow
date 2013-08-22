@@ -79,6 +79,7 @@ cd ${layoutdir}
 # re-append.
 
 if ( -f ${rootname}.cel2 ) then
+   echo "Preparing pin placement hints from ${rootname}.cel2" |& tee -a ${synthlog}
    if ( `grep -c padgroup ${rootname}.cel` == "0" ) then
       cat ${rootname}.cel2 >> ${rootname}.cel
    else if ( -M ${rootname}.cel2 > -M ${rootname}.cel ) then
@@ -87,15 +88,20 @@ if ( -f ${rootname}.cel2 ) then
       cat ${rootname}_tmp.cel ${rootname}.cel2 > ${rootname}.cel
       rm -f ${rootname}_tmp.cel
    endif
+else
+   echo -n "No ${rootname}.cel2 file found for project. . . " \
+		|& tee -a ${synthlog}
+   echo "continuing without pin placement hints" |& tee -a ${synthlog}
 endif
 
 #-----------------------------------------------
 # 1) Run TimberWolf
 #-----------------------------------------------
 
-( pushd ${bindir}/twdir ;\
-  source .twrc ;\
-  popd ;\
+echo "Running TimberWolf placement" |& tee -a ${synthlog}
+( pushd ${bindir}/twdir > /dev/null ;\
+  source .twrc >>& ${synthlog} ;\
+  popd > /dev/null ;\
   TimberWolf $rootname >>& ${synthlog} )
 
 #---------------------------------------------------
@@ -103,6 +109,7 @@ endif
 #---------------------------------------------------
 
 if ($makedef == 1) then
+   echo "Running place2def2.tcl"
    if ( "$techleffile" == "" ) then
       ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
                 ${techdir}/$leffile >>& ${synthlog}
@@ -120,6 +127,7 @@ endif
 
 if ($makedef == 1) then
    if ( -f ${scriptdir}/addspacers.tcl ) then
+      echo "Running addspacers.tcl"
       ${scriptdir}/addspacers.tcl ${rootname} ${techdir}/$leffile \
 		$fillcell >>& ${synthlog}
       if ( -f ${rootname}_filled.def ) then

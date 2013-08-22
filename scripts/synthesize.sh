@@ -85,18 +85,19 @@ touch ${synthlog}
 #---------------------------------------------------------------------
 
 cd ${sourcedir}
-${bindir}/vpreproc ${rootname}.v
+echo "Running verilog preprocessor" |& tee -a ${synthlog}
+${bindir}/vpreproc ${rootname}.v >>& ${synthlog}
 
 # Hack for Odin-II bug:  to be removed when bug is fixed
-${scriptdir}/vmunge.tcl ${rootname}.v
+${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
 mv ${rootname}_munge.v ${rootname}_tmp.v
 
 #---------------------------------------------------------------------
 # Run odin_ii on the verilog source to get a BLIF output file
 #---------------------------------------------------------------------
 
-echo "Running Odin_II for verilog parsing and synthesis"
-eval ${bindir}/odin_ii -U0 -V ${rootname}_tmp.v -o ${rootname}.blif >>& ${synthlog}
+echo "Running Odin_II for verilog parsing and synthesis" |& tee -a ${synthlog}
+eval ${bindir}/odin_ii -U0 -V ${rootname}_tmp.v -o ${rootname}.blif |& tee -a ${synthlog}
 
 #---------------------------------------------------------------------
 # Check for Odin-II compile-time errors
@@ -119,7 +120,7 @@ endif
 # write a netlist-type BLIF output file of the mapped circuit.
 #---------------------------------------------------------------------
 
-echo "Running abc for logic optimization"
+echo "Running abc for logic optimization" |& tee -a ${synthlog}
 ${bindir}/abc >> ${synthlog} << EOF
 read_blif ${rootname}.blif
 read_library ${techdir}/${techname}.genlib
@@ -137,7 +138,7 @@ EOF
 # <>
 #---------------------------------------------------------------------
 
-echo "Cleaning Up blif file syntax"
+echo "Cleaning Up blif file syntax" |& tee -a ${synthlog}
 
 # The following definitions will replace "LOGIC0" and "LOGIC1"
 # with buffers from gnd and vdd, respectively.  This takes care
@@ -160,7 +161,7 @@ endif
 # Generate a BDNET netlist from the BLIF output, place it in synthdir
 #---------------------------------------------------------------------
 
-echo "Creating BDNET netlist"
+echo "Creating BDNET netlist" |& tee -a ${synthlog}
 ${bindir}/blifrtl2bdnet ${rootname}_tmp.blif > ${synthdir}/${rootname}_tmp.bdnet
 
 # Switch to synthdir for processing of the BDNET netlist
@@ -170,12 +171,12 @@ cd ${synthdir}
 # Add initial conditions with set and reset flops
 #---------------------------------------------------------------------
 
-echo "Generating resets for register flops"
+echo "Generating resets for register flops" |& tee -a ${synthlog}
 ${scriptdir}/postproc.tcl ${rootname}_tmp.bdnet \
  	${sourcedir}/${rootname}.init \
 	${techdir}/${techname}.sh
 
-echo "Restoring original names on internal DFF outputs"
+echo "Restoring original names on internal DFF outputs" |& tee -a ${synthlog}
 ${scriptdir}/outputprep.tcl ${rootname}_tmp.bdnet ${rootname}.bdnet
 
 #---------------------------------------------------------------------
@@ -211,7 +212,7 @@ if ($?vddnet) then
    echo $vddnet >> ${rootname}_nofanout
 endif
 
-echo "Running BDnetFanout (iterative)"
+echo "Running BDnetFanout (iterative)" |& tee -a ${synthlog}
 echo "" >> ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
@@ -222,51 +223,40 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}
       set nchanged=$status
-      echo "nchanged=$nchanged"
+      echo "nchanged=$nchanged" |& tee -a ${synthlog}
    end
 endif
 
-echo ""
-echo "Generating RTL verilog and SPICE netlist file in directory ${synthdir}"
-echo "Files:"
-echo "   Verilog: ${synthdir}/${rootname}.rtl.v"
-echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v"
-echo ""
+echo "" >> ${synthlog}
+echo "Generating RTL verilog and SPICE netlist file in directory" \
+		|& tee -a ${synthlog}
+echo "	 ${synthdir}" |& tee -a ${synthlog}
+echo "Files:" |& tee -a ${synthlog}
+echo "   Verilog: ${synthdir}/${rootname}.rtl.v" |& tee -a ${synthlog}
+echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v" |& tee -a ${synthlog}
+echo "   Spice:   ${synthdir}/${rootname}.spc" |& tee -a ${synthlog}
+echo "" >> ${synthlog}
 
-echo "Running BDnet2Verilog."
+echo "Running BDnet2Verilog." |& tee -a ${synthlog}
 ${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.bdnet \
 	> ${rootname}.rtl.v
 
 ${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
 
-echo "Running BDnet2BSpice."
+echo "Running BDnet2BSpice." |& tee -a ${synthlog}
 ${bindir}/BDnet2BSpice -p ${vddnet} -g ${gndnet} -l ${techdir}/${spicefile} \
 	${rootname}.bdnet > ${rootname}.spc
 
-#-------------------------------------------------------------------------
-# Clean up after myself!
-#-------------------------------------------------------------------------
-
 cd ${projectpath}
-
-# rm -f *.enc >& /dev/null
-# rm -f /tmp/vis.* >& /dev/null
-# rm -f ${synthdir}/${rootname}_tmp.bdnet >& /dev/null
-# rm -f ${synthdir}/${rootname}_tmp_tmp.bdnet >& /dev/null
-# rm -f ${synthdir}/tmp.bdnet >& /dev/null
-# rm -f ${sourcedir}/${rootname}.bdnet
-# rm -f ${sourcedir}/${rootname}_tmp.v
-# rm -f ${sourcedir}/${rootname}.init
-# rm -f ${sourcedir}/${rootname}.blif
 
 #-------------------------------------------------------------------------
 # Create the .cel file for TimberWolf
 #-------------------------------------------------------------------------
 
-echo "Running bdnet2cel.tcl"
+echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
 ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
-	${layoutdir}/${rootname}.cel
+	${layoutdir}/${rootname}.cel >>& ${synthlog}
 
 # Don't overwrite an existing .par file.
 if (!(-f ${layoutdir}/${rootname}.par)) then
@@ -278,4 +268,5 @@ endif
 # user directions about what to put in the .par file, like number of
 # rows or cell aspect ratio, etc., etc.
 #-------------------------------------------------------------------------
-echo "Edit ${layoutdir}/${rootname}.par, then run placement and route"
+echo "Edit ${layoutdir}/${rootname}.par, then run placement and route" \
+		|& tee -a ${synthlog}
