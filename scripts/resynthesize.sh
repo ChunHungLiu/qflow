@@ -80,9 +80,15 @@ else
    exit 1
 endif
 
-if (!(-f ${synthdir}/${rootname}_tmp.bdnet)) then
-   echo "Error in clocktree.tcl:  No modified netlist was created." \
-		|& tee -a ${synthlog}
+#---------------------------------------------------------------------
+# Spot check:  Did clocktree produce file ${rootname}.cel?
+#---------------------------------------------------------------------
+
+if ( !( -f ${synthdir}/${rootname}_tmp.bdnet || \
+	( -M ${synthdir}/${rootname}_tmp.bdnet \
+        < -M ${layoutdir}/${rootname}.cel ))) then
+   echo "clocktree failure:  No file ${rootname}_tmp.bdnet." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif
 
@@ -119,6 +125,16 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    end
 endif
 
+#---------------------------------------------------------------------
+# Spot check:  Did BDnetFanout exit with an error?
+#---------------------------------------------------------------------
+
+if ( $nchanged < 0 ) then
+   echo "BDnetFanout failure:  See ${synthlog} for error messages"
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
 echo "" |& tee -a ${synthlog}
 echo "Generating RTL verilog and SPICE netlist file in directory" \
 	|& tee -a ${synthlog}
@@ -138,6 +154,30 @@ ${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
 echo "Running BDnet2BSpice." |& tee -a ${synthlog}
 ${bindir}/BDnet2BSpice ${rootname}.bdnet -p ${vddnet} -g ${gndnet} \
 	-l ${techdir}/${spicefile} > ${rootname}.spc
+
+#---------------------------------------------------------------------
+# Spot check:  Did BDnet2Verilog or BDnet2BSpice exit with an error?
+# Note that these files are not critical to the main synthesis flow,
+# so if they are missing, we flag a warning but do not exit.
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.rtl.v || \
+	( -M ${rootname}.rtl.v < -M ${rootname}.bdnet ))) then
+   echo "BDnet2Verilog failure:  No file ${rootname}.rtl.v created." \
+		|& tee -a ${synthlog}
+endif
+
+if ( !( -f ${rootname}.rtlnopwr.v || \
+	( -M ${rootname}.rtlnopwr.v < -M ${rootname}.bdnet ))) then
+   echo "BDnet2Verilog failure:  No file ${rootname}.rtlnopwr.v created." \
+		|& tee -a ${synthlog}
+endif
+
+if ( !( -f ${rootname}.spc || \
+	( -M ${rootname}.spc < -M ${rootname}.bdnet ))) then
+   echo "BDnet2BSpice failure:  No file ${rootname}.spc created." \
+		|& tee -a ${synthlog}
+endif
 
 #-------------------------------------------------------------------------
 # Clean up after myself!
@@ -159,5 +199,19 @@ echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
 ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
 	${layoutdir}/${rootname}.cel >>& ${synthlog}
+
+#---------------------------------------------------------------------
+# Spot check:  Did bdnet2cel produce file ${rootname}.cel?
+#---------------------------------------------------------------------
+
+if ( !( -f ${layoutdir}/${rootname}.cel || \
+	( -M ${layoutdir}/${rootname}.cel \
+        < -M ${synthdir}/${rootname}.bdenet ))) then
+   echo "bdnet2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
+#---------------------------------------------------------------------
 
 echo "Now re-run placement, and route" |& tee -a ${synthlog}

@@ -57,14 +57,27 @@ cd ${projectpath}
 
 cd ${layoutdir}
 
-#-----------------------------------------------
-# Create the detailed route.
-#-----------------------------------------------
+#------------------------------------------------------------------
+# Create the detailed route.  Monitor the output and print errors
+# to the output, as well as writing the "commit" line for every
+# 100th route, so the end-user can track the progress.
+#------------------------------------------------------------------
 
 echo "Running qrouter"
 ${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
 		${rootname} |& tee -a ${synthlog} | \
 		grep - -e fail -e Progess -e TotalRoutes.\*00
+
+#---------------------------------------------------------------------
+# Spot check:  Did qrouter produce file ${rootname}_route.def?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}_route.def || ( -M ${rootname}_route.def \
+		< -M ${rootname}.def ))) then
+   echo "qrouter failure:  No file ${rootname}_route.def." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
 
 mv ${rootname}.def ${rootname}_unroute.def
 mv ${rootname}_route.def ${rootname}.def

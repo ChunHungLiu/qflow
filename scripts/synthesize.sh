@@ -93,11 +93,38 @@ ${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
 mv ${rootname}_munge.v ${rootname}_tmp.v
 
 #---------------------------------------------------------------------
+# Spot check:  Did vpreproc produce file ${rootname}.init?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.init || ( -M ${rootname}.init < -M ${rootname}.v ))) then
+   echo "Verilog preprocessor failure:  No file ${rootname}.init." \
+		|& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
+#---------------------------------------------------------------------
 # Run odin_ii on the verilog source to get a BLIF output file
 #---------------------------------------------------------------------
 
 echo "Running Odin_II for verilog parsing and synthesis" |& tee -a ${synthlog}
 eval ${bindir}/odin_ii -U0 -V ${rootname}_tmp.v -o ${rootname}.blif |& tee -a ${synthlog}
+
+#---------------------------------------------------------------------
+# Check for out-of-date Odin-II version.
+# NOTE:  Should get qflow's configure script to run this test at
+# compile time. . .
+#---------------------------------------------------------------------
+
+set errline=`cat ${synthlog} | grep "invalid option" | wc -l`
+if ( $errline == 1 ) then
+   echo ""
+   echo "Odin-II version error.  Odin-II needs updating."
+   echo "Try code.google.com/p/vtr-verilog-to-routing/"
+   echo "-----------------------------------------------"
+   echo ""
+   exit 1
+endif
 
 #---------------------------------------------------------------------
 # Check for Odin-II compile-time errors
@@ -111,6 +138,16 @@ if ( $errline == 1 ) then
    echo "----------------------------------"
    cat ${synthlog} | grep "^line"
    echo ""
+   exit 1
+endif
+
+#---------------------------------------------------------------------
+# Spot check:  Did Odin-II produce file ${rootname}.blif?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.blif || ( -M ${rootname}.blif < -M ${rootname}.init ))) then
+   echo "Odin-II synthesis failure:  No file ${rootname}.blif." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif
 
@@ -131,6 +168,18 @@ map
 write_blif ${rootname}_mapped.blif
 quit
 EOF
+
+#---------------------------------------------------------------------
+# Spot check:  Did ABC produce file ${rootname}_mapped.blif?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}_mapped.blif || ( -M ${rootname}_mapped.blif \
+	< -M ${rootname}.init ))) then
+   echo "ABC synthesis/mapping failure:  No file ${rootname}_mapped.blif." \
+	|& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
 
 #---------------------------------------------------------------------
 # Odin_II appends "top^" to top-level signals, we want to remove these.
@@ -164,6 +213,17 @@ endif
 echo "Creating BDNET netlist" |& tee -a ${synthlog}
 ${bindir}/blifrtl2bdnet ${rootname}_tmp.blif > ${synthdir}/${rootname}_tmp.bdnet
 
+#---------------------------------------------------------------------
+# Spot check:  Did blifrtl2bdnet produce file ${rootname}_tmp.bdnet?
+#---------------------------------------------------------------------
+
+if ( !( -f ${synthdir}/${rootname}_tmp.bdnet || \
+	( -M ${synthdir}/${rootname}_tmp.bdnet < -M ${rootname}.init ))) then
+   echo "blifrtl2bdnet failure:  No file ${rootname}_tmp.bdnet." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
 # Switch to synthdir for processing of the BDNET netlist
 cd ${synthdir}
 
@@ -178,6 +238,18 @@ ${scriptdir}/postproc.tcl ${rootname}_tmp.bdnet \
 
 echo "Restoring original names on internal DFF outputs" |& tee -a ${synthlog}
 ${scriptdir}/outputprep.tcl ${rootname}_tmp.bdnet ${rootname}.bdnet
+
+#---------------------------------------------------------------------
+# Spot check:  Did postproc and outputprep produce file ${rootname}.bdnet?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.bdnet || ( -M ${rootname}.bdnet \
+	< -M ${rootname}_tmp.bdnet ))) then
+   echo "postproc or outputprep failure:  No file ${rootname}.bdnet." \
+	|& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
 
 #---------------------------------------------------------------------
 # NOTE:  To be restored, want to handle specific user instructions
@@ -227,6 +299,17 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    end
 endif
 
+#---------------------------------------------------------------------
+# Spot check:  Did BDnetFanout produce an error?
+#---------------------------------------------------------------------
+
+if ( $nchanged < 0 ) then
+   echo "BDnetFanout failure.  See file ${synthlog} for error messages." \
+	|& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
 echo "" >> ${synthlog}
 echo "Generating RTL verilog and SPICE netlist file in directory" \
 		|& tee -a ${synthlog}
@@ -247,18 +330,56 @@ echo "Running BDnet2BSpice." |& tee -a ${synthlog}
 ${bindir}/BDnet2BSpice -p ${vddnet} -g ${gndnet} -l ${techdir}/${spicefile} \
 	${rootname}.bdnet > ${rootname}.spc
 
-cd ${projectpath}
+#---------------------------------------------------------------------
+# Spot check:  Did BDnet2Verilog or BDnet2BSpice exit with an error?
+# Note that these files are not critical to the main synthesis flow,
+# so if they are missing, we flag a warning but do not exit.
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.rtl.v || \
+        ( -M ${rootname}.rtl.v < -M ${rootname}.bdnet ))) then
+   echo "BDnet2Verilog failure:  No file ${rootname}.rtl.v created." \
+                |& tee -a ${synthlog}
+endif
+
+if ( !( -f ${rootname}.rtlnopwr.v || \
+        ( -M ${rootname}.rtlnopwr.v < -M ${rootname}.bdnet ))) then
+   echo "BDnet2Verilog failure:  No file ${rootname}.rtlnopwr.v created." \
+                |& tee -a ${synthlog}
+endif
+
+if ( !( -f ${rootname}.spc || \
+        ( -M ${rootname}.spc < -M ${rootname}.bdnet ))) then
+   echo "BDnet2BSpice failure:  No file ${rootname}.spc created." \
+                |& tee -a ${synthlog}
+endif
 
 #-------------------------------------------------------------------------
 # Create the .cel file for TimberWolf
 #-------------------------------------------------------------------------
+
+cd ${projectpath}
 
 echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
 ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
 	${layoutdir}/${rootname}.cel >>& ${synthlog}
 
+#---------------------------------------------------------------------
+# Spot check:  Did bdnet2cel produce file ${rootname}.cel?
+#---------------------------------------------------------------------
+
+if ( !( -f ${layoutdir}/${rootname}.cel || ( -M ${layoutdir}/${rootname}.cel \
+	< -M ${rootname}.bdnet ))) then
+   echo "bdnet2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
+#-------------------------------------------------------------------------
 # Don't overwrite an existing .par file.
+#-------------------------------------------------------------------------
+
 if (!(-f ${layoutdir}/${rootname}.par)) then
    cp ${techdir}/${techname}.par ${layoutdir}/${rootname}.par
 endif

@@ -104,6 +104,16 @@ echo "Running TimberWolf placement" |& tee -a ${synthlog}
   popd > /dev/null ;\
   TimberWolf $rootname >>& ${synthlog} )
 
+#---------------------------------------------------------------------
+# Spot check:  Did TimberWolf produce file ${rootname}.pin?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.pin || ( -M ${rootname}.pin < -M ${rootname}.cel ))) then
+   echo "TimberWolf failure:  No file ${rootname}.pin." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
 #---------------------------------------------------
 # 2) Prepare DEF and .cfg files for qrouter
 #---------------------------------------------------
@@ -118,6 +128,16 @@ if ($makedef == 1) then
                 ${techdir}/$techleffile ${techdir}/$leffile \
 		>>& ${synthlog}
    endif
+endif
+
+#---------------------------------------------------------------------
+# Spot check:  Did place2def2 produce file ${rootname}.def?
+#---------------------------------------------------------------------
+
+if ( !( -f ${rootname}.def || ( -M ${rootname}.def < -M ${rootname}.pin ))) then
+   echo "place2def2 failure:  No file ${rootname}.def." |& tee -a ${synthlog}
+   echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
 endif
 
 #---------------------------------------------------
