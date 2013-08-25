@@ -86,6 +86,15 @@ else
 endif
 
 #----------------------------------------------------
+# Set variables from install locations here, so we
+# don't have to do it in every script separately.
+# Track path to scripts and binaries used by qflow
+#----------------------------------------------------
+
+set scriptdir=SUBST_SCRIPT_DIR
+set bindir=SUBST_BIN_DIR
+
+#----------------------------------------------------
 # Check for the techfile (see comments at top)
 #----------------------------------------------------
 
@@ -108,7 +117,7 @@ if ( -d ${projectpath}/tech/${techname} ) then
    set techdir=${projectpath}/tech/${techname}
 else
    if ( -d ${projectpath}/${techname} ) then
-      set techdir=${topdir}/${techname}
+      set techdir=${projectpath}/${techname}
    else
       if ( -d ${projectpath}/tech && -r ${projectpath}/tech/${techname}.sh ) then
 	 set techdir=${projectpath}/tech
@@ -122,12 +131,6 @@ else
       endif
    endif
 endif
-
-# Set variables from install locations here, so we don't have to do it in every
-# script separately.  Track path to scripts and binaries used by qflow
-
-set scriptdir=SUBST_SCRIPT_DIR
-set bindir=SUBST_BIN_DIR
 
 exit 0
 #----------------------------------------------------

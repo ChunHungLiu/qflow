@@ -156,7 +156,7 @@ set modulename=${vsource:r}
 # Source the technology initialization script
 #------------------------------------------------------------------
 
-if ( -x ${techdir}/${tech}.sh ) then
+if ( -f ${techdir}/${tech}.sh ) then
    source $techdir/${tech}.sh
 else
    echo "Error:  Cannot find tech init script ${techdir}/${tech}.sh to source"
