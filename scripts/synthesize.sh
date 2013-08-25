@@ -297,6 +297,8 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
       set nchanged=$status
       echo "nchanged=$nchanged" |& tee -a ${synthlog}
    end
+else
+   set nchanged=0
 endif
 
 #---------------------------------------------------------------------
