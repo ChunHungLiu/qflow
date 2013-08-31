@@ -418,6 +418,7 @@ dict for {netname inst} $nets {
 	 }
          for {set j 0} {$j < $subnets} {incr j} {
 	    set cvals [lindex $temp $j]
+	    if {[lindex $cvals 2] == 0} {set cvals [lreplace $cvals 2 2 1]}
 	    set cx [/ [lindex $cvals 0] [lindex $cvals 2]]
 	    set cy [/ [lindex $cvals 1] [lindex $cvals 2]]
 	    set centers [lreplace $centers $j $j [list $cx $cy]]
