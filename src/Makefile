@@ -17,7 +17,7 @@ QFLOW_ODIN_PATH = /home/tim/src/vtr/ODIN_II/odin_II.exe
 QFLOW_MAGIC_PATH = /usr/local/bin/magic
 
 OBJECTS = AddIO2BDnet.o BDnet2BSpice.o BDnet2Verilog.o CleanUpBDnet.o BDnetFanout.o
-OBJECTS += vpreproc.o dcombine.o vsplit.o blifrtl2bdnet.o
+OBJECTS += vpreproc.o dcombine.o vsplit.o blifrtl2bdnet.o liberty2tech.o
 SOURCES := $(patsubst %.o,%.c,$(OBJECTS))
 TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
 
@@ -48,6 +48,9 @@ vsplit$(EXEEXT): vsplit.o
 
 blifrtl2bdnet$(EXEEXT): blifrtl2bdnet.o
 	$(CC) $(LDFLAGS) blifrtl2bdnet.o -o $@ $(LIBS)
+
+liberty2tech$(EXEEXT): liberty2tech.o
+	$(CC) $(LDFLAGS) liberty2tech.o -o $@ $(LIBS)
 
 install: $(TARGETS)
 	@echo "Installing verilog and BDNET file format handlers"
