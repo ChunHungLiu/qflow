@@ -191,6 +191,65 @@ advancetoken(FILE *flib, char delimiter)
 }
 
 /*--------------------------------------------------------------*/
+/* Name pattern matching.  This is used to restrict the 	*/
+/* entries that are placed in genlib.  It understands a few	*/
+/* wildcard characters: "^" (matches beginning-of-string), and	*/
+/* "$" (matches end-of-string).					*/
+/*								*/
+/* May want to add "|" and "&" (OR, AND) functions, but maybe	*/
+/* it's not necessary.  Also standard wildcards like "." and	*/
+/* "*".								*/
+/*--------------------------------------------------------------*/
+
+int
+pattern_match(char *name, char *pattern)
+{
+    char *sptr;
+    int plen = strlen(pattern);
+    int rval = 0;
+    int matchend = 0;
+
+    if (*(pattern + plen - 1) == '$') {
+	matchend = 1;
+	*(pattern + plen - 1) = '\0';
+    }
+
+    if (*pattern == '^') {
+	sptr = pattern + 1;
+	if (matchend) {
+	    if (!strcmp(name, sptr))
+		rval = 1;
+	    else
+		rval = 0;
+	}
+	else {
+	    if (!strncmp(name, sptr, plen - 2))
+		rval = 1;
+	    else
+		rval = 0;
+	}
+    }
+    else {
+	if (matchend) {
+	    sptr = name + strlen(name) - plen + 1;
+	    if (!strcmp(sptr, pattern))
+		rval = 1;
+	    else
+		rval = 0;
+	}
+	else {
+	    if (strstr(name, pattern) != NULL)
+		rval = 1;
+	    else
+		rval = 0;
+	}
+    }
+
+    if (matchend) *(pattern + plen - 1) = '$';
+    return rval;
+}
+
+/*--------------------------------------------------------------*/
 /* Main program							*/
 /*--------------------------------------------------------------*/
 
@@ -209,12 +268,14 @@ main(int objc, char *argv[])
     lutable *newtable, *reftable;
     cell *newcell, *lastcell;
     pin *newpin, *lastpin;
-    char *curfunc;
+    char *curfunc, *pattern = NULL;
 
-    if (objc != 4) {
-	fprintf(stderr, "Usage:  liberty2tech <name.lib> <name.genlib> <gate.cfg>\n");
+    if (objc != 4 && objc != 5) {
+	fprintf(stderr, "Usage:  liberty2tech <name.lib> <name.genlib> <gate.cfg>"
+		" [<pattern>]\n");
 	exit (1);
     }
+    if (objc == 5) pattern = strdup(argv[4]);
 
     flib = fopen(argv[1], "r");
     if (flib == NULL) {
@@ -669,22 +730,35 @@ main(int objc, char *argv[])
     
     curfunc = NULL;
     for (newcell = cells; newcell; newcell = newcell->next) {
-	if (newcell->function == NULL) continue;
-	if ((curfunc == NULL) || (strcmp(newcell->function, curfunc))) {
-	    curfunc = newcell->function;
-	    fprintf(fgen, "GATE %s %g %s;\n", newcell->name,
-		newcell->area, newcell->function);
 
-	    for (newpin = newcell->pins; newpin; newpin = newpin->next) {
-		if (newpin->type == INPUT)
-		    fprintf(fgen, "   PIN %s %s %g %g %g %g %g %g\n",
-				newpin->name, "UNKNOWN", newpin->cap,
-				newpin->maxtrans / newcell->slope,
-				newcell->mintrans, newcell->slope,
-				newcell->mintrans, newcell->slope);
-	    }
-	    fprintf(fgen, "\n");
+	/* Cells without functions cannot be listed */
+
+	if (newcell->function == NULL) continue;
+
+	/* If no pattern was given, then we try to ensure that	*/
+	/* each entry has a unique logic function.  This is not	*/
+	/* very reliable, and should be improved.		*/
+
+	if (pattern != NULL) {
+	    if (!pattern_match(newcell->name, pattern))
+	 	continue;
 	}
+	else if ((curfunc != NULL) && !strcmp(newcell->function, curfunc))
+	    continue;
+
+	curfunc = newcell->function;
+	fprintf(fgen, "GATE %s %g %s;\n", newcell->name,
+	    newcell->area, newcell->function);
+
+	for (newpin = newcell->pins; newpin; newpin = newpin->next) {
+	    if (newpin->type == INPUT)
+		fprintf(fgen, "   PIN %s %s %g %g %g %g %g %g\n",
+			newpin->name, "UNKNOWN", newpin->cap,
+			newpin->maxtrans / newcell->slope,
+			newcell->mintrans, newcell->slope,
+			newcell->mintrans, newcell->slope);
+	}
+	fprintf(fgen, "\n");
     }
     fclose(fgen);
 
