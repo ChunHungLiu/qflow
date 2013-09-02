@@ -188,7 +188,7 @@ while {1} {
 		set resetpinstatic ${gndnet}
 	     }
 	     if {$flopt == 1} {
-		if {[catch {set $flopset}]} {
+		if {[catch {set flopset}]} {
 		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
 		   set srline "\t\"${setpin}\" : \"${setresetnet}\";\
 				\n\t\"${resetpin}\" : \"${resetpinstatic}\";"
@@ -197,7 +197,7 @@ while {1} {
 		   set srline "\t\"${setpin}\" : \"${setresetnet}\""
 		}
 	     } elseif {$flopt == 0} {
-		if {[catch {set $flopreset}]} {
+		if {[catch {set flopreset}]} {
 		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
 		   set srline "\t\"${setpin}\" : \"${setpinstatic}\";\
 				\n\t\"${resetpin}\" : \"${resetresetnet}\";"
