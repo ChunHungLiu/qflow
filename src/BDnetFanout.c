@@ -817,7 +817,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 			if (strcmp(stren, Gatename)) {
 			   needscorrecting = TRUE;
 			   if (VerboseFlag)
-			      printf("\nOutput Gate changed from %s%s to %s%s\n",
+			      printf("\nOutput Gate changed from %s to %s\n",
 					Gatename, stren);
 			}
 		     }
@@ -941,6 +941,11 @@ void write_output(FILE *infptr, FILE *outfptr)
 	    if (state == ENDMODEL)
 	       fprintf(outfptr, "%s", inputline); 
          }
+	 else if (state == NONE) {
+	    /* Print line and reset so we don't overflow gateline */
+	    fprintf(outfptr, "%s", gateline);
+	    gateline[0] = '\0';		/* Start a new line */
+	 }
       }
       strcat(gateline, inputline);	/* Append input line to gate */
    }
