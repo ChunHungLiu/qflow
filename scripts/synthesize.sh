@@ -194,17 +194,26 @@ echo "Cleaning Up blif file syntax" |& tee -a ${synthlog}
 # of technologies where tie-low and tie-high cells are not
 # defined.
 
-set subs0a="/LOGIC0/s/O=/${bufpin_in}=gnd ${bufpin_out}=/"
-set subs0b="/LOGIC0/s/LOGIC0/${bufcell}/"
-set subs1a="/LOGIC1/s/O=/${bufpin_in}=vdd ${bufpin_out}=/"
-set subs1b="/LOGIC1/s/LOGIC1/${bufcell}/"
+if ( "$tielo" == "") then
+   set subs0a="/LOGIC0/s/O=/${bufpin_in}=gnd ${bufpin_out}=/"
+   set subs0b="/LOGIC0/s/LOGIC0/${bufcell}/"
+else
+   set subs0a=""
+   set subs0b=""
+endif
+
+if ( "$tiehi" == "") then
+   set subs1a="/LOGIC1/s/O=/${bufpin_in}=vdd ${bufpin_out}=/"
+   set subs1b="/LOGIC1/s/LOGIC1/${bufcell}/"
+else
+   set subs1a=""
+   set subs1b=""
+endif
 
 cat ${rootname}_mapped.blif | sed -e "s/top^//g" \
 	-e "s/~\([0-9]*\)/<\1>/g" \
 	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
 	> ${rootname}_tmp.blif
-
-endif
 
 #---------------------------------------------------------------------
 # Generate a BDNET netlist from the BLIF output, place it in synthdir

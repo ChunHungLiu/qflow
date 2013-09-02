@@ -152,14 +152,15 @@ main(int argc, char *argv[])
 		    }
 		    else {
 			fprintf(stdout, "INSTANCE \"DFFDEFAULT\":\"physical\"\n");
-			fprintf(stdout, "\t\"D\"   : \"%s\";\n", latch_input);
+			fprintf(stdout, "\t\"DDEFAULT\"   : \"%s\";\n", latch_input);
 
 			// Hack to go along with vmunge.tcl. . .
 			if (!strncmp(latch_clock, "xloopback_in_", 13))
-			    fprintf(stdout, "\t\"CLK\" : \"%s\";\n", latch_clock + 13);
+			    fprintf(stdout, "\t\"CDEFAULT\" : \"%s\";\n",
+					latch_clock + 13);
 			else
-			    fprintf(stdout, "\t\"CLK\" : \"%s\";\n", latch_clock);
-			fprintf(stdout, "\t\"Q\"   : \"%s\";\n\n", latch_output);
+			    fprintf(stdout, "\t\"CDEFAULT\" : \"%s\";\n", latch_clock);
+			fprintf(stdout, "\t\"QDEFAULT\"   : \"%s\";\n\n", latch_output);
 		    }
 		    break;
 

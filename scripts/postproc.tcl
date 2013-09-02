@@ -149,8 +149,8 @@ foreach resetnet [lsort -uniq $resetlist] {
 }
 
 # The postproc file has replaced all latches with DFFDEFAULT having
-# three pins D, CLK, and Q, in that order, which makes it easy to
-# parse.
+# three pins DDEFAULT, CDEFAULT, and QDEFAULT, in that order, which
+# makes it easy to parse.
 
 set sridx 0
 while {1} {
@@ -160,7 +160,7 @@ while {1} {
        gets $bnet qline
        set srline ""
        
-       if [regexp [subst {"${floppinout}"\[ \\t\]+:\[ \\t\]+"(.+)"}] \
+       if [regexp [subst {"QDEFAULT"\[ \\t\]+:\[ \\t\]+"(.+)"}] \
 			$qline lmatch signame] {
 	  set sigtest [string map {\[ << \] >>} $signame]
 	  set idx [lsearch $flopsigs $sigtest]
@@ -271,6 +271,11 @@ while {1} {
 	      set srline ""
 	  }
        }
+
+       # Substitute real pin names for DDEFAULT, CDEFAULT, and QDEFAULT
+       regsub {DDEFAULT} $dline $floppinin dline
+       regsub {CDEFAULT} $cpline $floppinclk cpline
+       regsub {QDEFAULT} $qline $floppinout qline
 
        puts $onet $line
        puts $onet $dline

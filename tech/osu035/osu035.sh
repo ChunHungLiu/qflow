@@ -31,6 +31,8 @@ set resetpin=R		;# The name of the clear/reset pin on DFFs
 set setpininvert=1	;# Set this to 1 if the set pin is inverted (!set)
 set resetpininvert=1	;# Set this to 1 if the reset pin is inverted (!reset)
 set floppinout=Q	;# Name of the output pin on DFFs
+set floppinin=D		;# Name of the output pin on DFFs
+set floppinclk=CLK	;# Name of the clock pin on DFFs
 
 set bufcell=BUFX2	;# Minimum drive strength buffer cell
 set bufpin_in=A		;# Name of input port to buffer cell
@@ -48,8 +50,8 @@ set nandpin_in2=B	;# Name of second input pin to NAND gate
 set nandpin_out=Y	;# Name of output pin from NAND gate
 set fillcell=FILL	;# Spacer (filler) cell (prefix, if more than one)
 
-# set tiehi=TIEHI	;# Cell to connect to power, if one exists
-# set tielo=TIELO	;# Cell to connect to ground, if one exists
+set tiehi=""		;# Cell to connect to power, if one exists
+set tielo=""		;# Cell to connect to ground, if one exists
 
 set gndnet=gnd		;# Name used for ground pins in standard cells
 set vddnet=vdd		;# Name used for power pins in standard cells
