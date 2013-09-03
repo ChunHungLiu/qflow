@@ -29,6 +29,14 @@ int libCurrentLine;
 #define INPUT		0
 #define OUTPUT		1
 
+// Function translation
+#define GROUPBEGIN	1
+#define GROUPEND	2
+#define SIGNAL		3
+#define OPERATOR	4
+#define XOPERATOR	5
+#define SEPARATOR	6
+
 /*--------------------------------------------------------------*/
 /* Database							*/
 /*--------------------------------------------------------------*/
@@ -64,6 +72,8 @@ typedef struct _cell {
     double slope;
     double mintrans;
     lutable *reftable;
+    char *idx1;
+    char *idx2;
     char *tablevals;
     cellptr next;
 } cell;
@@ -188,6 +198,176 @@ advancetoken(FILE *flib, char delimiter)
     while (isspace(*lineptr)) lineptr++;
     linepos = lineptr;
     return token;
+}
+
+/*--------------------------------------------------------------*/
+/* Expansion of XOR operator "^" into and/or/invert		*/
+/*--------------------------------------------------------------*/
+
+char *
+xor_expand(char *lib_func)
+{
+    static char newfunc[16384];
+    char savfunc[16384];
+    char *xptr, *sptr, *fptr, *rest, *start;
+    int nest, lhsnests, rhsnests;
+    char *rhs = NULL;
+    char *lhs = NULL;
+
+    strcpy(newfunc, lib_func);
+
+    while ((xptr = strchr(newfunc, '^')) != NULL) {
+
+       /* find expression on RHS */
+       sptr = xptr + 1;
+       while (*sptr == ' ' || *sptr == '\t') sptr++;
+       fptr = sptr;
+       rhsnests = 0;
+       if (*sptr == '(') {
+	  rhsnests = 1;
+	  nest = 1;
+	  while ((*sptr != ')') || (nest > 0)) {
+	     sptr++;
+	     if (*sptr == '(') nest++;
+	     if (*sptr == ')') nest--;
+	  }
+       }
+       else {
+	  while (*sptr != ' ' && *sptr != '\t' && *sptr != '\0' &&
+			*sptr != ')')
+	     sptr++;
+	  if (*sptr == ')') sptr--;
+       }
+
+       // If argument is a single character, then don't bother with parentheses
+       if (sptr - fptr == 0) rhsnests = 1;
+
+       if (rhsnests == 1) {
+          rhs = (char *)malloc(sptr - fptr + 2);
+          strncpy(rhs, fptr, sptr - fptr + 1);
+	  *(rhs + (int)(sptr - fptr + 1)) = '\0';
+       }
+       else {
+	  /* Add parentheses around RHS */
+          rhs = (char *)malloc(sptr - fptr + 4);
+	  *rhs = '(';
+          strncpy(rhs + 1, fptr, sptr - fptr + 1);
+	  *(rhs + (int)(sptr - fptr + 2)) = ')';
+	  *(rhs + (int)(sptr - fptr + 3)) = '\0';
+       }
+       rest = sptr + 1;
+       
+       /* find expression on LHS */
+       sptr = xptr - 1;
+       while (*sptr == ' ' || *sptr == '\t') sptr--;
+       fptr = sptr;
+       lhsnests = 0;
+       if (*sptr == ')') {
+          lhsnests = 1;
+	  nest = 1;
+	  while ((*sptr != '(') || (nest > 0)) {
+	     sptr--;
+	     if (*sptr == ')') nest++;
+	     if (*sptr == '(') nest--;
+	  }
+       }
+       else {
+	  while (*sptr != ' ' && *sptr != '\t' && sptr != lib_func &&
+			*sptr != '(')
+	     sptr--;
+	  if (*sptr == '(') sptr++;
+       }
+
+       // If argument is a single character, then don't bother with parentheses
+       if (fptr - sptr == 0) lhsnests = 1;
+
+       if (lhsnests == 1) {
+          lhs = (char *)malloc(fptr - sptr + 2);
+          strncpy(lhs, sptr, fptr - sptr + 1);
+	  *(lhs + (int)(fptr - sptr + 1)) = '\0';
+       }
+       else {
+          lhs = (char *)malloc(fptr - sptr + 4);
+	  *lhs = '(';
+          strncpy(lhs + 1, sptr, fptr - sptr + 1);
+	  *(lhs + (int)(fptr - sptr + 2)) = ')';
+	  *(lhs + (int)(fptr - sptr + 3)) = '\0';
+       }
+       strcpy(savfunc, newfunc);
+       start = savfunc + (sptr - newfunc);
+
+       sprintf(start, "(%s*!%s + !%s*%s) %s",
+		lhs, rhs, lhs, rhs, rest);
+
+	if (rhs != NULL) free(rhs);
+	if (lhs != NULL) free(lhs);
+
+	strcpy(newfunc, savfunc);
+    }
+
+    return newfunc;
+}
+
+/*--------------------------------------------------------------*/
+/* Turn a liberty-format function string into one recognized by	*/
+/* genlib.  This means, for the most part, replacing forms of	*/
+/* "A B" with "A * B", and "A ^ B" with "A * !B + !A * B"	*/
+/*--------------------------------------------------------------*/
+
+char *
+get_function(char *out_name, char *lib_func)
+{
+    static char newfunc[16384];
+    char *fptr, *sptr;
+    int state = INIT;
+
+    fptr = newfunc;
+    sptr = out_name;
+
+    while (*sptr != '\0') *fptr++ = *sptr++;
+    *fptr++ = ' ';
+    *fptr++ = '=';
+    *fptr++ = ' ';
+
+    sptr = xor_expand(lib_func); // genlib can't handle "^"
+
+    while (*sptr != '\0') {
+	if (*sptr == '(') {
+	    if (state == SIGNAL || state == GROUPEND) {
+		*fptr++ = '*';	// Implicit AND;  genlib wants to see
+		*fptr++ = ' ';	// this written out explicitly.
+	    }	   
+	    state = GROUPBEGIN;
+	    *fptr++ = *sptr++;
+	}
+	else if (*sptr == ')') {
+	    state = GROUPEND;
+	    *fptr++ = *sptr++;
+	}
+	else if (*sptr == '!' || *sptr == '*' || *sptr == '+') {
+	    state = OPERATOR;
+	    *fptr++ = *sptr++;
+	}
+	else if (*sptr == ' ' || *sptr == '\t') {
+	    if (state == SIGNAL) {
+		state = SEPARATOR;
+	    }
+	    *fptr++ = *sptr++;
+	}
+	else if (*sptr == '^') {
+	    state = XOPERATOR;
+	}
+	else {
+	    if (state == SEPARATOR || state == GROUPEND) {
+		*fptr++ = '*';	// Implicit AND;  genlib wants to see
+		*fptr++ = ' ';	// this written out explicitly.
+	    }
+	    state = SIGNAL;
+	    *fptr++ = *sptr++;
+	}
+    }
+    *fptr = '\0';
+    return newfunc;
 }
 
 /*--------------------------------------------------------------*/
@@ -320,6 +500,7 @@ main(int objc, char *argv[])
 		// Here we check for the main blocks, again not rigorously. . .
 
 		if (!strcasecmp(token, "}")) {
+		    fprintf(stdout, "End of library at line %d\n", libCurrentLine);
 		    section = INIT;			// End of library block
 		}
 		else if (!strcasecmp(token, "delay_model")) {
@@ -391,6 +572,8 @@ main(int objc, char *argv[])
 		    if (strcmp(token, "{"))
 			fprintf(stderr, "Error: failed to find start of block\n");
 		    newcell->reftable = NULL;
+		    newcell->idx1 = NULL;
+		    newcell->idx2 = NULL;
 		    newcell->function = NULL;
 		    newcell->pins = NULL;
 		    newcell->tablevals = NULL;
@@ -484,9 +667,8 @@ main(int objc, char *argv[])
 		    if (!strcmp(token, "\""))
 			token = advancetoken(flib, '\"');	// Find function string
 		    if (newpin->type == OUTPUT) {
-		        newcell->function = malloc(strlen(token) +
-					strlen(newpin->name) + 4);
-		        sprintf(newcell->function, "%s = %s", newpin->name, token);
+			char *rfunc = get_function(newpin->name, token);
+			newcell->function = strdup(rfunc);
 		    }
 		    token = advancetoken(flib, 0);
 		    if (strcmp(token, ";"))
@@ -560,23 +742,49 @@ main(int objc, char *argv[])
 		    token = advancetoken(flib, 0);
 		    if (strcmp(token, "{"))
 			fprintf(stderr, "Failed to find start of value block\n");
-		    token = advancetoken(flib, 0);
-		    if (strcasecmp(token, "values"))
-			fprintf(stderr, "Failed to find keyword \"values\"\n");
-		    token = advancetoken(flib, 0);
-		    if (strcmp(token, "("))
-			fprintf(stderr, "Failed to find start of value table\n");
-		    token = advancetoken(flib, ')');
 
-		    if (newcell->tablevals == NULL)
-			newcell->tablevals = strdup(token);
+		    while (*token != '}') {
+		        token = advancetoken(flib, 0);
+		        if (!strncasecmp(token, "index_1", 5)) {
 
-		    token = advancetoken(flib, 0);
-		    if (strcmp(token, ";"))
-			fprintf(stderr, "Failed to find end of value table\n");
-		    token = advancetoken(flib, 0);
-		    if (strcmp(token, "}"))
-			fprintf(stderr, "Failed to find end of timing block\n");
+			    // Local index values override those in the template
+
+			    token = advancetoken(flib, 0);	// Open parens
+			    token = advancetoken(flib, 0);	// Quote
+			    if (!strcmp(token, "\""))
+				token = advancetoken(flib, '\"');
+			    newcell->idx1 = strdup(token);
+			    token = advancetoken(flib, ';'); // EOL semicolon
+			}
+		        else if (!strncasecmp(token, "index_2", 5)) {
+
+			    // Local index values override those in the template
+
+			    token = advancetoken(flib, 0);	// Open parens
+			    token = advancetoken(flib, 0);	// Quote
+			    if (!strcmp(token, "\""))
+				token = advancetoken(flib, '\"');
+			    newcell->idx2 = strdup(token);
+			    token = advancetoken(flib, ';'); // EOL semicolon
+			}
+			else if (!strcasecmp(token, "values")) {
+			    token = advancetoken(flib, 0);	
+			    if (strcmp(token, "("))
+				fprintf(stderr, "Failed to find start of"
+						" value table\n");
+			    token = advancetoken(flib, ')');
+
+			    if (newcell->tablevals == NULL)
+				newcell->tablevals = strdup(token);
+
+			    token = advancetoken(flib, 0);
+			    if (strcmp(token, ";"))
+				fprintf(stderr, "Failed to find end of value table\n");
+			    token = advancetoken(flib, 0);
+			}
+			else if (strcmp(token, "{"))
+			    fprintf(stderr, "Failed to find end of timing block\n");
+		    }
 		}
 		else {
 		    // For unhandled tokens, read in tokens.  If it is
@@ -646,7 +854,7 @@ main(int objc, char *argv[])
 
     for (newcell = cells; newcell; newcell = newcell->next) {
 	int i, cellinputs, tablevals;
-	char *tptr, *eptr;
+	char *tptr, *eptr, *idx1, *idx2;
 	double mintrans, mincap, maxcap, mintrise, maxtrise;
 	double loaddelay, intcap;
 
@@ -661,17 +869,28 @@ main(int objc, char *argv[])
 		cellinputs++;
 	}
 
+	if (newcell->idx1 != NULL)
+	    idx1 = newcell->idx1;
+	else
+	    idx1 = newcell->reftable->idx1;
+
+	if (newcell->idx2 != NULL)
+	    idx2 = newcell->idx2;
+	else
+	    idx2 = newcell->reftable->idx2;
+
 	// Find the smallest value in the input net transition table.
 	// Assume it is the first value, therefore we want to parse the
 	// first row of the cell table.  If that's not true, then we need
 	// to add more sophisticated parsing code here!
 
-	sscanf(newcell->reftable->idx1, "%lg", &mintrans);
+	sscanf(idx1, "%lg", &mintrans);
 
 	// Find the smallest and largest values in the output net capacitance table
-	sscanf(newcell->reftable->idx2, "%lg", &mincap);
 
-	tptr = newcell->reftable->idx2;
+	sscanf(idx2, "%lg", &mincap);
+
+	tptr = idx2;
 	tablevals = 1;
 	while ((tptr = strchr(tptr, ',')) != NULL) {
 	    tablevals++;
