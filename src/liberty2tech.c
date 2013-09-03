@@ -45,10 +45,13 @@ typedef struct _lutable *lutableptr;
 
 typedef struct _lutable {
     char *name;
-    char *var1;
-    char *var2;
-    char *idx1;
-    char *idx2;
+    char invert;	// 0 if times x caps, 1 if caps x times
+    char *var1;		// Name of array in index1
+    char *var2;		// Name of array in index2
+    int  tsize;		// Number of entries in time array
+    int  csize;		// Number of entries in cap array
+    double *times;	// Time array
+    double *caps;	// Cap array
     lutableptr next;
 } lutable;
 
@@ -72,9 +75,9 @@ typedef struct _cell {
     double slope;
     double mintrans;
     lutable *reftable;
-    char *idx1;
-    char *idx2;
-    char *tablevals;
+    double *times;	// Local values for time indexes, if given
+    double *caps;	// Local values for cap indexes, if given
+    double *values;	// Matrix of all values
     cellptr next;
 } cell;
 
@@ -445,6 +448,10 @@ main(int objc, char *argv[])
     lutable *tables = NULL;
     cell *cells = NULL;
 
+    int i, j;
+    double gval;
+    char *iptr;
+
     lutable *newtable, *reftable;
     cell *newcell, *lastcell;
     pin *newpin, *lastpin;
@@ -517,6 +524,12 @@ main(int objc, char *argv[])
 		else if (!strcasecmp(token, "lu_table_template")) {
 		    // Read in template information;
 		    newtable = (lutable *)malloc(sizeof(lutable));
+		    newtable->var1 = NULL;
+		    newtable->var2 = NULL;
+		    newtable->tsize = 0;
+		    newtable->csize = 0;
+		    newtable->times = NULL;
+		    newtable->caps = NULL;
 		    newtable->next = tables;
 		    tables = newtable;
 
@@ -532,18 +545,65 @@ main(int objc, char *argv[])
 			    token = advancetoken(flib, 0);
 			    token = advancetoken(flib, ';');
 			    newtable->var1 = strdup(token);
+			    if (strstr(token, "capacitance") != NULL)
+				newtable->invert = 1;
 			}
 			else if (!strcasecmp(token, "variable_2")) {
 			    token = advancetoken(flib, 0);
 			    token = advancetoken(flib, ';');
 			    newtable->var2 = strdup(token);
+			    if (strstr(token, "transition") != NULL)
+				newtable->invert = 1;
 			}
 			else if (!strcasecmp(token, "index_1")) {
 			    token = advancetoken(flib, 0);	// Open parens
 			    token = advancetoken(flib, 0);	// Quote
 			    if (!strcmp(token, "\""))
 				token = advancetoken(flib, '\"');
-			    newtable->idx1 = strdup(token);
+
+			    if (newtable->invert == 1) {
+				// Count entries
+				iptr = token;
+				newtable->csize = 1;
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->csize++;
+				}
+				newtable->caps = (double *)malloc(newtable->csize *
+					sizeof(double));
+				newtable->csize = 0;
+				iptr = token;
+				sscanf(iptr, "%lg", &newtable->caps[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->csize++;
+				    sscanf(iptr, "%lg",
+						&newtable->caps[newtable->csize]);
+				}
+				newtable->csize++;
+			    }
+			    else {	// newtable->invert = 0
+				// Count entries
+				iptr = token;
+				newtable->tsize = 1;
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->tsize++;
+				}
+				newtable->times = (double *)malloc(newtable->tsize *
+					sizeof(double));
+				newtable->tsize = 0;
+				iptr = token;
+				sscanf(iptr, "%lg", &newtable->times[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->tsize++;
+				    sscanf(iptr, "%lg",
+						&newtable->times[newtable->tsize]);
+				}
+				newtable->tsize++;
+			    }
+
 			    token = advancetoken(flib, ';'); // EOL semicolon
 			}
 			else if (!strcasecmp(token, "index_2")) {
@@ -551,7 +611,50 @@ main(int objc, char *argv[])
 			    token = advancetoken(flib, 0);	// Quote
 			    if (!strcmp(token, "\""))
 				token = advancetoken(flib, '\"');
-			    newtable->idx2 = strdup(token);
+
+			    if (newtable->invert == 0) {
+				// Count entries
+				iptr = token;
+				newtable->csize = 1;
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->csize++;
+				}
+				newtable->caps = (double *)malloc(newtable->csize *
+					sizeof(double));
+				newtable->csize = 0;
+				iptr = token;
+				sscanf(iptr, "%lg", &newtable->caps[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->csize++;
+				    sscanf(iptr, "%lg",
+						&newtable->caps[newtable->csize]);
+				}
+				newtable->csize++;
+			    }
+			    else { 	// newtable->invert == 1
+				// Count entries
+				iptr = token;
+				newtable->tsize = 1;
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->tsize++;
+				}
+				newtable->times = (double *)malloc(newtable->tsize *
+					sizeof(double));
+				newtable->tsize = 0;
+				iptr = token;
+				sscanf(iptr, "%lg", &newtable->times[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    newtable->tsize++;
+				    sscanf(iptr, "%lg",
+						&newtable->times[newtable->tsize]);
+				}
+				newtable->tsize++;
+			    }
+
 			    token = advancetoken(flib, ';'); // EOL semicolon
 			}
 		    }
@@ -572,14 +675,14 @@ main(int objc, char *argv[])
 		    if (strcmp(token, "{"))
 			fprintf(stderr, "Error: failed to find start of block\n");
 		    newcell->reftable = NULL;
-		    newcell->idx1 = NULL;
-		    newcell->idx2 = NULL;
 		    newcell->function = NULL;
 		    newcell->pins = NULL;
-		    newcell->tablevals = NULL;
 		    newcell->area = 1.0;
 		    newcell->slope = 1.0;
 		    newcell->mintrans = 0.0;
+		    newcell->times = NULL;
+		    newcell->caps = NULL;
+		    newcell->values = NULL;
 		    lastpin = NULL;
 		    section = CELLDEF;
 		}
@@ -741,11 +844,11 @@ main(int objc, char *argv[])
 
 		    token = advancetoken(flib, 0);
 		    if (strcmp(token, "{"))
-			fprintf(stderr, "Failed to find start of value block\n");
+			fprintf(stderr, "Failed to find start of cell_rise block\n");
 
 		    while (*token != '}') {
 		        token = advancetoken(flib, 0);
-		        if (!strncasecmp(token, "index_1", 5)) {
+		        if (!strcasecmp(token, "index_1")) {
 
 			    // Local index values override those in the template
 
@@ -753,10 +856,39 @@ main(int objc, char *argv[])
 			    token = advancetoken(flib, 0);	// Quote
 			    if (!strcmp(token, "\""))
 				token = advancetoken(flib, '\"');
-			    newcell->idx1 = strdup(token);
-			    token = advancetoken(flib, ';'); // EOL semicolon
+
+			    //-------------------------
+
+			    if (reftable && (reftable->invert == 1)) {
+				// Entries had better match the ref table
+				iptr = token;
+				i = 0;
+				newcell->caps = (double *)malloc(reftable->csize *
+					sizeof(double));
+				sscanf(iptr, "%lg", &newcell->caps[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    i++;
+				    sscanf(iptr, "%lg", &newcell->caps[i]);
+				}
+			    }
+			    else if (reftable && (reftable->invert == 0)) {
+				iptr = token;
+				i = 0;
+				newcell->times = (double *)malloc(reftable->tsize *
+					sizeof(double));
+				sscanf(iptr, "%lg", &newcell->times[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    i++;
+				    sscanf(iptr, "%lg", &newcell->times[i]);
+				}
+			    }
+
+			    token = advancetoken(flib, ')'); 	// Close paren
+			    token = advancetoken(flib, ';');	// EOL semicolon
 			}
-		        else if (!strncasecmp(token, "index_2", 5)) {
+		        else if (!strcasecmp(token, "index_2")) {
 
 			    // Local index values override those in the template
 
@@ -764,8 +896,37 @@ main(int objc, char *argv[])
 			    token = advancetoken(flib, 0);	// Quote
 			    if (!strcmp(token, "\""))
 				token = advancetoken(flib, '\"');
-			    newcell->idx2 = strdup(token);
-			    token = advancetoken(flib, ';'); // EOL semicolon
+
+			    //-------------------------
+
+			    if (reftable && (reftable->invert == 1)) {
+				// Entries had better match the ref table
+				iptr = token;
+				i = 0;
+				newcell->times = (double *)malloc(reftable->tsize *
+					sizeof(double));
+				sscanf(iptr, "%lg", &newcell->times[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    i++;
+				    sscanf(iptr, "%lg", &newcell->times[i]);
+				}
+			    }
+			    else if (reftable && (reftable->invert == 0)) {
+				iptr = token;
+				i = 0;
+				newcell->caps = (double *)malloc(reftable->csize *
+					sizeof(double));
+				sscanf(iptr, "%lg", &newcell->caps[0]);
+				while ((iptr = strchr(iptr, ',')) != NULL) {
+				    iptr++;
+				    i++;
+				    sscanf(iptr, "%lg", &newcell->caps[i]);
+				}
+			    }
+
+			    token = advancetoken(flib, ')'); 	// Close paren
+			    token = advancetoken(flib, ';');	// EOL semicolon
 			}
 			else if (!strcasecmp(token, "values")) {
 			    token = advancetoken(flib, 0);	
@@ -774,13 +935,53 @@ main(int objc, char *argv[])
 						" value table\n");
 			    token = advancetoken(flib, ')');
 
-			    if (newcell->tablevals == NULL)
-				newcell->tablevals = strdup(token);
+			    // Parse the string of values and enter it into the
+			    // table "values", which is size csize x tsize
+
+			    if (reftable && reftable->csize > 0 && reftable->tsize > 0) {
+				if (reftable->invert) {
+				    newcell->values = (double *)malloc(reftable->csize *
+						reftable->tsize * sizeof(double));
+				    iptr = token;
+				    for (i = 0; i < reftable->tsize; i++) {
+					for (j = 0; j < reftable->csize; j++) {
+					    while (*iptr == ' ' || *iptr == '\"' ||
+							*iptr == ',')
+						iptr++;
+					    sscanf(iptr, "%lg", &gval);
+					    *(newcell->values + j * reftable->tsize
+							+ i) = gval;
+					    while (*iptr != ' ' && *iptr != '\"' &&
+							*iptr != ',')
+						iptr++;
+					}
+				    }
+				}
+				else {
+				    newcell->values = (double *)malloc(reftable->csize *
+						reftable->tsize * sizeof(double));
+				    iptr = token;
+				    for (j = 0; j < reftable->csize; j++) {
+					for (i = 0; i < reftable->tsize; i++) {
+					    while (*iptr == ' ' || *iptr == '\"' ||
+							*iptr == ',')
+						iptr++;
+					    sscanf(iptr, "%lg", &gval);
+					    *(newcell->values + j * reftable->tsize
+							+ i) = gval;
+					    while (*iptr != ' ' && *iptr != '\"' &&
+							*iptr != ',')
+						iptr++;
+					}
+				    }
+				}
+			    }
 
 			    token = advancetoken(flib, 0);
 			    if (strcmp(token, ";"))
 				fprintf(stderr, "Failed to find end of value table\n");
 			    token = advancetoken(flib, 0);
+
 			}
 			else if (strcmp(token, "{"))
 			    fprintf(stderr, "Failed to find end of timing block\n");
@@ -853,13 +1054,14 @@ main(int objc, char *argv[])
     fprintf(fcfg, "# gatename delay num_inputs Cint Cpin1 Cpin2...\n\n");
 
     for (newcell = cells; newcell; newcell = newcell->next) {
-	int i, cellinputs, tablevals;
-	char *tptr, *eptr, *idx1, *idx2;
+	int i, cellinputs;
+ 	double *times, *caps;
+	char *tptr, *eptr;
 	double mintrans, mincap, maxcap, mintrise, maxtrise;
 	double loaddelay, intcap;
 
 	// If this cell does not have a timing table or timing values, ignore it.
-	if (newcell->reftable == NULL || newcell->tablevals == NULL) continue;
+	if (newcell->reftable == NULL || newcell->values == NULL) continue;
 
 	// Count the number of input pins on the cell
 
@@ -869,47 +1071,34 @@ main(int objc, char *argv[])
 		cellinputs++;
 	}
 
-	if (newcell->idx1 != NULL)
-	    idx1 = newcell->idx1;
+	if (newcell->times != NULL)
+	    times = newcell->times;
 	else
-	    idx1 = newcell->reftable->idx1;
+	    times = newcell->reftable->times;
 
-	if (newcell->idx2 != NULL)
-	    idx2 = newcell->idx2;
+	if (newcell->caps != NULL)
+	    caps = newcell->caps;
 	else
-	    idx2 = newcell->reftable->idx2;
+	    caps = newcell->reftable->caps;
 
 	// Find the smallest value in the input net transition table.
 	// Assume it is the first value, therefore we want to parse the
 	// first row of the cell table.  If that's not true, then we need
 	// to add more sophisticated parsing code here!
 
-	sscanf(idx1, "%lg", &mintrans);
+	mintrans = *times;
 
 	// Find the smallest and largest values in the output net capacitance table
 
-	sscanf(idx2, "%lg", &mincap);
-
-	tptr = idx2;
-	tablevals = 1;
-	while ((tptr = strchr(tptr, ',')) != NULL) {
-	    tablevals++;
-	    tptr++;
-	    eptr = tptr;
-	}
-	sscanf(eptr, "%lg", &maxcap);
+	mincap = *caps;
+	maxcap = *(caps + newcell->reftable->csize - 1);
 
 	// Pick up values for rise time under maximum and minimum loads in
 	// the template.
 
-	sscanf(newcell->tablevals + 1, "%lg", &mintrise);
-	tptr = newcell->tablevals + 1;
-	for (i = 0; i < tablevals - 1; i++) {
-	   tptr = strchr(tptr, ',');
-	   tptr++;
-	}
-	sscanf(tptr, "%lg", &maxtrise);
-	
+	mintrise = *newcell->values;
+	maxtrise = *(newcell->values + newcell->reftable->csize - 1);
+
 	// Calculate delay per load
 	loaddelay = (maxtrise - mintrise) / (maxcap - mincap);
 	newcell->slope = loaddelay;
