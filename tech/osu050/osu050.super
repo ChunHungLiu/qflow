@@ -1,5 +1,5 @@
 #
-# Supergate library derived for "osu050.genlib" on Mon Jul 29 15:58:30 2013.
+# Supergate library derived for "osu050.genlib_temp" on Tue Sep  3 14:59:14 2013.
 #
 # Command line: "super  -i 5  -l 1  -d 10000000.00  -a 10000000.00  -t 100    osu050.genlib_temp".
 #
@@ -14,7 +14,7 @@
 # The number of functions   =          0.
 # The total functions       = 4294967296 (2^32).
 #
-# Generation time (sec)     =       0.01.
+# Generation time (sec)     =       0.00.
 #
 osu050.genlib
 5
