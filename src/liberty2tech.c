@@ -200,6 +200,13 @@ advancetoken(FILE *flib, char delimiter)
 
     while (isspace(*lineptr)) lineptr++;
     linepos = lineptr;
+
+    // Final:  Remove trailing whitespace
+    tptr = token + strlen(token) - 1;
+    while (isspace(*tptr)) {
+	*tptr = '\0';
+	tptr--;
+    }
     return token;
 }
 
@@ -322,6 +329,7 @@ get_function(char *out_name, char *lib_func)
 {
     static char newfunc[16384];
     char *fptr, *sptr;
+    int nest;
     int state = INIT;
 
     fptr = newfunc;
@@ -347,7 +355,7 @@ get_function(char *out_name, char *lib_func)
 	    state = GROUPEND;
 	    *fptr++ = *sptr++;
 	}
-	else if (*sptr == '!' || *sptr == '*' || *sptr == '+') {
+	else if (*sptr == '!' || *sptr == '*' || *sptr == '+' || *sptr == '\'') {
 	    state = OPERATOR;
 	    *fptr++ = *sptr++;
 	}
@@ -370,6 +378,35 @@ get_function(char *out_name, char *lib_func)
 	}
     }
     *fptr = '\0';
+
+    // Process single-quote-as-inversion.  That is, A' --> !A
+    // The number of characters remains the same, so we can apply
+    // the changes directly to newfunc with careful use of memmove
+
+    while ((sptr = strchr(newfunc, '\'')) != NULL) {
+	fptr = sptr - 1;
+	while (isspace(*fptr)) fptr--;
+
+	if (*fptr == ')') {
+	    nest = 1;
+	    while (nest > 0) {
+		fptr--;
+		if (*fptr == ')') nest++;
+		else if (*fptr == '(') nest--;
+		else if (fptr == newfunc) break;
+	    }
+	}
+	else {
+	    while (*fptr != '!' && *fptr != '*' && *fptr != '+' &&
+		   !isspace(*fptr) && (fptr > newfunc) && *fptr != '('
+		   && *fptr != ')')
+		fptr--;
+	    if (fptr > newfunc) fptr++;
+	}
+	memmove(fptr + 1, fptr, (size_t)(sptr - fptr));
+	*fptr = '!';
+    }
+
     return newfunc;
 }
 
