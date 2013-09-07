@@ -174,9 +174,8 @@ flush $fcfg
 # made a qrouter "-i" option to print out route layer information;
 # this should be found in file ${topname}.info
 
-if {[catch {exec $qrouter_path -i $infoname -c $cfgname}]} {
-    puts stdout "Error running $qrouter_path -i $infoname -c $cfgname"
-}
+catch {exec $qrouter_path -i $infoname -c $cfgname}
+
 set finf [open $infoname r]
 if {$finf != {}} {
    set i 0
