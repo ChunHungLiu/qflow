@@ -246,10 +246,10 @@ if ( !( -f ${rootname}_mapped.blif || ( -M ${rootname}_mapped.blif \
    exit 1
 endif
 
-set errline=`cat ${synthlog} | grep "core dumped" | wc -l`
+set errline=`cat ${synthlog} | grep "Assertion" | grep "failed" | wc -l`
 if ( $errline == 1 ) then
    echo ""
-   echo "ABC core dumped:"
+   echo "ABC exited due to failure:"
    echo "See file ${synthlog} for details."
    echo ""
    exit 1
