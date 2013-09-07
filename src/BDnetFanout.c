@@ -912,7 +912,9 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     char *repl = find_size(stren);
 
 		     if (glen != slen) {
+			int ilen = strlen(s + glen);
 			memmove(s + slen, s + glen, strlen(s + glen));
+			*(s + slen + ilen) = '\0';
 		     }
 		     strncpy(s, stren, slen);
 	             Changed_count++;
