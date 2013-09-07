@@ -223,7 +223,7 @@ endif
 #---------------------------------------------------------------------
 
 echo "Running abc for logic optimization" |& tee -a ${synthlog}
-${bindir}/abc >> ${synthlog} << EOF
+${bindir}/abc >>& ${synthlog} << EOF
 read_blif ${rootname}.blif
 read_library ${techdir}/${techname}.genlib
 read_super ${techdir}/${techname}.super
