@@ -75,7 +75,10 @@ typedef struct _vector {
 } vector;
 
 // Module data structure
+typedef struct _module *modptr;
+
 typedef struct _module {
+   modptr next;
    char *name;
    vector *iolist;		// Vectors/signals that are part of the I/O list
    vector *reglist;		// Vectors/signals that are registered
@@ -104,6 +107,26 @@ typedef struct _bstack {
    int suspend;				// 1 if output of this block is suspended
 } bstack;
 
+// Nesting include file handling
+
+typedef struct _fstack *fstackp;
+
+typedef struct _fstack {
+   fstackp next;
+   char *filename;
+   FILE *file;
+   int currentLine;
+} fstack;
+
+// Nesting ifdef handling
+
+typedef struct _istack *istackp;
+
+typedef struct _istack {
+   istackp next;
+   int state;
+} istack;
+
 // Block handling types
 #define	 NOTHING	 0		// Not inside anything
 #define	 MODULE		 1		// Inside a module
@@ -124,6 +147,7 @@ typedef struct _bstack {
 #define  ASSIGNMENT	16		// Inside an assignment (end with ";")
 #define  BLOCKING	17		// Inside a blocking assignment (end with ";")
 #define  SUBCIRCUIT	18		// Inside a subcircuit call
+#define  SUBPIN		19		// Inside a subcircuit pin connection
 
 // Edge types
 #define  NEGEDGE	1
@@ -134,11 +158,6 @@ typedef struct _bstack {
 #define  EQUAL		1
 #define  NOT_EQUAL	2
 #define  NOT		3
-
-// Global value to track line number in file.  Of limited use, since
-// we may be including other files.  Will need to replace this with
-// a stack. . . 
-int currentLine;
 
 /*----------------------------------------------------------------------*/
 /* Tokenizer routine							*/
@@ -165,17 +184,17 @@ int currentLine;
 /*									*/
 /* Generally, newlines are ignored, except when "//" is used as a	*/
 /* comment-to-EOL.  Comment blocks using slash-star are ignored by	*/
-/* the tokenizer.  Line continuation characters ("\" at EOL) cause the	*/
-/* input to be read beyond the newline and concatenated to the existing	*/
-/* input.								*/
+/* the tokenizer.							*/
 /*----------------------------------------------------------------------*/
 
 char *
-advancetoken(FILE *flib, FILE *fout, char delimiter)
+advancetoken(fstack **filestack, FILE *fout, char delimiter)
 {
     static char token[VPP_LINE_MAX];
     static char line[VPP_LINE_MAX];
     static char *linepos = NULL;
+
+    fstack *savestack;
 
     char *lineptr = linepos;
     char *lptr, *tptr;
@@ -185,6 +204,17 @@ advancetoken(FILE *flib, FILE *fout, char delimiter)
     commentblock = 0;
     concat = 0;
     nest = 0;
+
+    // This is a bit of a hack;  it's the only sure way to catch a
+    // line when read-to-eol is requested and the input is already
+    // at the end of the line.
+
+    if (lineptr != NULL && *lineptr == '\n' && delimiter == '\n') {
+	*token = '\n';
+	*(token + 1) = '\0';
+	return token;
+    }
+
     while (1) {		/* Keep processing until we get a token or hit EOF */
 
 	if (lineptr != NULL && delimiter == (char)-1) {
@@ -202,13 +232,25 @@ advancetoken(FILE *flib, FILE *fout, char delimiter)
 	    }
 	    else lineptr = NULL;
 	}
-
-	if (lineptr == NULL || *lineptr == '\n' || *lineptr == '\0') {
+	if (lineptr == NULL || *lineptr == '\0' || *lineptr == '\n') {
 	    if (fout && ((lineptr != NULL) || (commentblock == 1)))
 		fputs("\n", fout);
-	    result = fgets(line, VPP_LINE_MAX + 1, flib);
-	    currentLine++;
-	    if (result == NULL) return NULL;
+	    result = fgets(line, VPP_LINE_MAX + 1, (*filestack)->file);
+	    // fprintf(stderr, "File %s Line %d\n", (*filestack)->filename,
+	    //		(*filestack)->currentLine);
+	    while (result == NULL) {
+		if ((*filestack)->next != NULL) {
+		    savestack = *filestack;
+		    *filestack = (*filestack)->next;
+		    fclose(savestack->file);
+		    free(savestack->filename);
+		    free(savestack);
+		    result = fgets(line, VPP_LINE_MAX + 1, (*filestack)->file);
+		}
+		else
+		    return NULL;
+	    }
+	    (*filestack)->currentLine++;
 	    lineptr = line;
 	}
 
@@ -276,7 +318,7 @@ advancetoken(FILE *flib, FILE *fout, char delimiter)
 		    if (tptr == token) *tptr++ = *lineptr++;
 		    break;
 		}
-		if (*lineptr == '~' || *lineptr == '!' || *lineptr == '^') {
+		if (*lineptr == '~' || *lineptr == '^') {
 		    if (tptr == token) *tptr++ = *lineptr++;
 		    break;
 		}
@@ -294,6 +336,36 @@ advancetoken(FILE *flib, FILE *fout, char delimiter)
 		// ">", "<", and "=" are single tokens by themselves.
 
 		if (*lineptr == '<' || *lineptr == '>' || *lineptr == '=') {
+		    if (*(lineptr + 1) == '=') {
+		        if (tptr == token) {
+			    *tptr++ = *lineptr++;
+			    *tptr++ = *lineptr++;
+			}
+			break;
+		    }
+		    else if (*(lineptr + 1) == '<' && *(lineptr) == '<') {
+		        if (tptr == token) {
+			    *tptr++ = *lineptr++;
+			    *tptr++ = *lineptr++;
+			}
+			break;
+		    }
+		    else if (*(lineptr + 1) == '>' && *(lineptr) == '>') {
+		        if (tptr == token) {
+			    *tptr++ = *lineptr++;
+			    *tptr++ = *lineptr++;
+			}
+			break;
+		    }
+		    else {
+			if (tptr == token) *tptr++ = *lineptr++;
+			break;
+		    }
+		}
+
+		// Likewise, "!=" is a single token;  otherwise "!" is
+
+		if (*lineptr == '!') {
 		    if (*(lineptr + 1) == '=') {
 		        if (tptr == token) {
 			    *tptr++ = *lineptr++;
@@ -362,7 +434,7 @@ advancetoken(FILE *flib, FILE *fout, char delimiter)
     }
     if (delimiter != 0) lineptr++;
 
-    while (isspace(*lineptr)) lineptr++;
+    while (*lineptr == ' ' || *lineptr == '\t') lineptr++;
 
     linepos = lineptr;
 
@@ -404,7 +476,7 @@ get_bitval(char *token)
 /*----------------------------------------------------------------------*/
 
 char *
-parse_bit(int currentLine, module *topmod, char *vstr, int idx)
+parse_bit(fstack *filestack, module *topmod, char *vstr, int idx)
 {
    int vsize, vval, realsize;
    static char bitval[2] = "0";
@@ -412,6 +484,7 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
    char *cptr = NULL, *newcptr;
    vector *testvec;
    int locidx;
+   int currentLine = filestack->currentLine;
    static char *fullname = NULL;
    
    locidx = (idx < 0) ? 0 : idx;
@@ -493,7 +566,8 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 	       locidx -= vsize;
 	       continue;
 	    }
-	    fprintf(stderr, "Line %d:  Not enough bits for vector.\n", currentLine);
+	    fprintf(stderr, "File %s, Line %d:  Not enough bits for vector.\n",
+			filestack->filename, filestack->currentLine);
 	    return NULL;
 	 }
       }
@@ -525,8 +599,8 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 	 
 	 if (is_indexed) *is_indexed = '[';	/* Restore index delimiter */
 	 if (testvec == NULL) {
-	    fprintf(stderr, "Line %d: Cannot parse signal name \"%s\" for reset\n",
-			currentLine, vloc);
+	    fprintf(stderr, "File %s, Line %d: Cannot parse signal name \"%s\" for reset\n",
+			filestack->filename, filestack->currentLine, vloc);
 	    return NULL;
 	 }
 	 else {
@@ -549,8 +623,8 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 		  locidx -= testvec->vector_size;
 		  continue;
 	       }
-	       fprintf(stderr, "Line %d:  Vector LHS exceeds dimensions of RHS.\n",
-			currentLine);
+	       fprintf(stderr, "File %s, Line %d:  Vector LHS exceeds dimensions of RHS.\n",
+			filestack->filename, filestack->currentLine);
 	       return NULL;
 	    }
 	    else {
@@ -568,8 +642,9 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 
 		     if (testvec->vector_start > testvec->vector_end) {
 			if (j < testvec->vector_end) {
-			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
-					" %d to %d.\n", currentLine,
+			   fprintf(stderr, "File %s, Line %d:  Vector RHS is outside of"
+					" range %d to %d.\n",
+					filestack->filename, filestack->currentLine,
 					testvec->vector_start, testvec->vector_end);
 			   j = testvec->vector_end;
 			}
@@ -586,22 +661,25 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 		  	      locidx -= (jstart - jend + 1);
 		  	      continue;
 			   }
-			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
-					" %d to %d.\n", currentLine,
+			   fprintf(stderr, "File %s, Line %d:  Vector RHS is outside of "
+					" range %d to %d.\n",
+					filestack->filename, filestack->currentLine,
 					testvec->vector_start, testvec->vector_end);
 			   j = testvec->vector_start;
 			}
 		     }
 		     else {
 			if (j > testvec->vector_end) {
-			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
-					" %d to %d.\n", currentLine,
+			   fprintf(stderr, "File %s, Line %d:  Vector RHS is outside of "
+					" range %d to %d.\n",
+					filestack->filename, filestack->currentLine,
 					testvec->vector_start, testvec->vector_end);
 			   j = testvec->vector_end;
 			}
 			else if (j < testvec->vector_start) {
-			   fprintf(stderr, "Line %d:  Vector RHS is outside of range"
-					" %d to %d.\n", currentLine,
+			   fprintf(stderr, "File %s, Line %d:  Vector RHS is outside of "
+					"range %d to %d.\n",
+					filestack->filename, filestack->currentLine,
 					testvec->vector_start, testvec->vector_end);
 			   j = testvec->vector_start;
 			}
@@ -612,8 +690,9 @@ parse_bit(int currentLine, module *topmod, char *vstr, int idx)
 		     j = jstart;
 
 		     if (locidx != 0) {
-			fprintf(stderr, "Line %d:  Vector LHS is set by single bit"
-				" on RHS.  Padding by repetition.\n", currentLine);
+			fprintf(stderr, "File %s, Line %d:  Vector LHS is set by single"
+				" bit on RHS.  Padding by repetition.\n",
+				filestack->filename, filestack->currentLine);
 		     }
 		  }
 	       }
@@ -703,27 +782,31 @@ popstack(bstack **stack) {
 int
 main(int argc, char *argv[])
 {
-    FILE *fsource = NULL;
     FILE *finit = NULL;
     FILE *fclk = NULL;
     FILE *ftmp = NULL;
+    FILE *fdep = NULL;
 
     char *newtok, token[VPP_LINE_MAX];
     char *xp, *bptr, *filename, *cptr;
     char locfname[2048];
-    const char *toklist;
 
     bstack *stack, *tstack;
+    fstack *newfile, *filestack;
+    istack *ifdefstack;
 
-    module *topmod;
+    module *topmod, *newmod;
     sigact *clocksig;
     sigact *testreset, *testsig;
     vector *initvec, *testvec, *newvec;
     parameter *params = NULL;
+    parameter *newparam, *testparam;
+
+    char *subname = NULL, *instname = NULL;
 
     int tempsuspend;
     int start, end, ival, i, j, k;
-    int parm;
+    int parm, ifdeflevel;
     int condition;
     int resetdone;
     char edgetype;
@@ -751,8 +834,13 @@ main(int argc, char *argv[])
     else
         snprintf(locfname, 2045, "%s.v", filename);
 
-    fsource = fopen(locfname, "r");
-    if (fsource == NULL) {
+    filestack = (fstack *)malloc(sizeof(fstack));
+    filestack->currentLine = 0;
+    filestack->filename = strdup(locfname);
+    filestack->next = NULL;
+
+    filestack->file = fopen(locfname, "r");
+    if (filestack->file == NULL) {
 	fprintf(stderr, "Error:  No such file or cannot open file \"%s\"\n", locfname);
 	exit(1);
     }
@@ -779,39 +867,126 @@ main(int argc, char *argv[])
 	fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
     }
 
+    sprintf(locfname, "%s.dep", filename);
+    fdep = fopen(locfname, "w");
+    if (fdep == NULL) {
+	fprintf(stderr, "Error:  Cannot open \"%s\" for writing.\n", locfname);
+    }
+
     topmod = NULL;
-    currentLine = 0;
     condition = UNKNOWN;
+    ifdefstack = NULL;
 
     /* Start the stack with a NOTHING entry */
     pushstack(&stack, NOTHING, 0);
 
     /* Read continuously and break loop when input is exhausted */
 
-    while ((newtok = advancetoken(fsource, ftmp, 0)) != NULL) {
-
-	paramcpy(token, newtok, params);		// Substitute parameters
+    while ((newtok = advancetoken(&filestack, ftmp, 0)) != NULL) {
 
 	/* State-independent processing */
+	/* First set is values for which we should NOT substitute parameters */
+	/* and which must be recognized in any `ifdef block	*/
 
-	if (!strcmp(token, "//")) {
+	if (!strcmp(newtok, "//")) {
 	    fputs(" ", ftmp);
-	    fputs(token, ftmp);
+	    fputs(newtok, ftmp);
 	    fputs(" ", ftmp);
-	    newtok = advancetoken(fsource, ftmp, '\n'); // Read to EOL
+	    newtok = advancetoken(&filestack, ftmp, '\n'); // Read to EOL
 	    fputs(newtok, ftmp);	// Write out this line
 	    continue;
 	}
 
-	parm = 1;
-	if (!strcmp(token, "parameter") || !(parm = strcmp(token, "`define"))) {
-	    parameter *newparam;
+	if (!strcmp(newtok, "`endif")) {
+	    istack *istacktest;
+	    if (ifdefstack == NULL) {
+		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n");
+	    }
+	    else {
+		istacktest = ifdefstack;
+		ifdefstack = ifdefstack->next;
+		free(istacktest);
+		continue;
+	    }
+	}
+	else if (!strcmp(newtok, "`else")) {
+	    if (ifdefstack == NULL) {
+		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n");
+	    }
+	    else {
+		// A state of -1 does not change.  Only change 1->0 and 0->1
+		if (ifdefstack->state == 0)
+		    ifdefstack->state = 1;
+		else if (ifdefstack->state == 1)
+		    ifdefstack->state = 0;
+		continue;
+	    }
+	}
+
+	if (!strcmp(newtok, "`ifdef")) {
+	    istack *newifstack;
+	    newifstack = (istack *)malloc(sizeof(istack));
+	    newifstack->next = ifdefstack;
+	    ifdefstack = newifstack;
 
 	    /* Get parameter name */
-	    newtok = advancetoken(fsource, ftmp, 0);
-	    if (newtok == NULL) {
-		fprintf(stderr, "Error in input:  Null input after definition.\n");
-		break;
+	    newtok = advancetoken(&filestack, ftmp, 0);
+
+	    /* If we are already in an if block state 0, then	*/
+	    /* set state to -1.  This prevents any changing of	*/
+	    /* the value for an `else corresponding to this	*/
+	    /* `ifdef block or anything nested inside it.	*/
+
+	    if (newifstack->next && newifstack->next->state <= 0) {
+		newifstack->state = -1;
+	    }
+	    else {
+		for (newparam = params; newparam; newparam = newparam->next) {
+		    // Note that defined value has "`" in front everywhere
+		    // except in "`define" and "`ifdef"
+		    if (*newparam->name == '`' &&
+				!strcmp(newparam->name + 1, newtok)) {
+			newifstack->state = 1;
+			break;
+		    }
+		}
+		if (newparam == NULL) newifstack->state = 0;
+	    }
+	    continue;
+	}
+
+	/* Having processed all `ifdef ... `else ... `endif statements,	*/ 
+	/* we check the status and ignore all code that is blocked by	*/
+	/* a not-defined condition.					*/
+
+	if (ifdefstack && ifdefstack->state <= 0) continue;
+
+	/* Second set is values for which we should NOT substitute parameters	*/
+	/* and which must not be recognized under a rejected ifdef condition	*/
+
+	if (!strcmp(newtok, "`undef")) {
+	    /* Get parameter name */
+	    newtok = advancetoken(&filestack, ftmp, 0);
+	    for (newparam = params; newparam; newparam = newparam->next) {
+		if (!strcmp(newparam->name, newtok)) {
+		    testparam = newparam;
+		    newparam = newparam->next;
+		    free(testparam->name);
+		    free(testparam);
+		} 
+	    }
+	    continue;
+	}
+
+	parm = 1;
+	if (!strcmp(newtok, "parameter") || !(parm = strcmp(newtok, "`define"))) {
+
+	    /* Get parameter name */
+	    newtok = advancetoken(&filestack, ftmp, 0);
+	    if (!strcmp(newtok, "[")) {
+		/* Ignore array bounds on parameter definitions */
+	        newtok = advancetoken(&filestack, ftmp, ']');
+	        newtok = advancetoken(&filestack, ftmp, 0);
 	    }
 
 	    newparam = (parameter *)malloc(sizeof(parameter));
@@ -829,15 +1004,18 @@ main(int argc, char *argv[])
 	    /* so we need to skip over it, and other whitespace.	*/
 
 	    if (parm) {
-	        newtok = advancetoken(fsource, ftmp, 0);
+	        newtok = advancetoken(&filestack, ftmp, 0);
 		if (strcmp(newtok, "="))
-		    fprintf(stderr, "Error: \"parameter\" without \"=\"\n");
-		newtok = advancetoken(fsource, ftmp, ';');
+		    fprintf(stderr, "Error File %s Line %d: \"parameter\" without \"=\"\n",
+				filestack->filename, filestack->currentLine);
+		newtok = advancetoken(&filestack, ftmp, ';');
 		if (strchr(newtok, '\n') != NULL)
-		    fprintf(stderr, "Error: \"parameter\" without ending \";\"\n");
+		    fprintf(stderr, "Error File %s Line %d: \"parameter\" without "
+				"ending \";\"\n",
+				filestack->filename, filestack->currentLine);
 	    }
 	    else {
-	        newtok = advancetoken(fsource, ftmp, '\n');
+	        newtok = advancetoken(&filestack, ftmp, '\n');
 	    }
 
 	    /* Run "paramcpy" to make any parameter substitutions	*/
@@ -874,6 +1052,30 @@ main(int argc, char *argv[])
 	    continue;
 	}
 
+	paramcpy(token, newtok, params);		// Substitute parameters
+
+	if (!strcmp(token, "`include")) {
+	    /* Get parameter name */
+	    newtok = advancetoken(&filestack, ftmp, 0);	/* Get 1st quote */
+	    if (!strcmp(newtok, "\""))
+		newtok = advancetoken(&filestack, ftmp, '\"');
+
+	    // Create a new file record and push it
+	    newfile = (fstack *)malloc(sizeof(fstack));
+	    newfile->file = fopen(newtok, "r");
+	    if (newfile->file == NULL) {
+		free(newfile);
+		fprintf(stderr, "Cannot read include file \"%s\"\n", newtok);
+	    }
+	    else {
+		newfile->next = filestack;
+		filestack = newfile;
+		newfile->filename = strdup(newtok);
+		newfile->currentLine = 0;
+	    }
+	    continue;
+	}
+
 	/* State-dependent processing */
 
 	if (stack == NULL) {
@@ -885,6 +1087,10 @@ main(int argc, char *argv[])
 	    case NOTHING:
 		if (!strcmp(token, "module")) {
 		    pushstack(&stack, MODULE, stack->suspend);
+		    newmod = (module *)malloc(sizeof(module));
+		    newmod->name = NULL;
+		    newmod->next = topmod;
+		    topmod = newmod;
 		}
 		else if (!strcmp(token, "`timescale")) {
 		    fputs("// ", ftmp);		// Comment this out!
@@ -897,13 +1103,14 @@ main(int argc, char *argv[])
 
 	    case MODULE:
 		/* Get name of module and fill module structure*/
-		if (topmod == NULL) {
+		if (topmod->name == NULL) {
 		    if (!strcmp(token, "(")) {
-			fprintf(stderr, "Error:  No module name!\n");
+			fprintf(stderr, "Error File %s Line %d:  No module name!\n",
+				filestack->filename, filestack->currentLine);
 			break;
 		    }
 		    if (DEBUG) printf("Found module \"%s\" in source\n", token);
-		    topmod = (module *)malloc(sizeof(module));
+
 		    topmod->name = strdup(token);
 		    topmod->iolist = NULL;
 		    topmod->reglist = NULL;
@@ -918,7 +1125,8 @@ main(int argc, char *argv[])
 		    pushstack(&stack, MBODY, stack->suspend);
 		}
 		else {
-		    fprintf(stderr, "Expecting input/output list\n");
+		    fprintf(stderr, "Error File %s Line %d: Expecting input/output list\n",
+				filestack->filename, filestack->currentLine);
 		}
 		if (stack->suspend <= 1) {
 		    fputs(token, ftmp);
@@ -983,6 +1191,37 @@ main(int argc, char *argv[])
 		    popstack(&stack);
 		    if (stack->state == MODULE) popstack(&stack);
 		}
+		else {
+		    // Check for any subcircuit call, as evidenced by the
+		    // syntax "<name> <name> ( ...".  Append the name to the
+		    // .dep file
+		    if (subname == NULL) {
+			subname = strdup(token);
+		    }
+		    else if (instname == NULL) {
+			instname = strdup(token);
+		    }
+		    // NOTE:  Need to handle parameter passing notation here!
+		    else if (!strcmp(token, "(")) {
+			pushstack(&stack, SUBCIRCUIT, stack->suspend);
+
+			// Dependencies list is for files other than this one.
+			// So check module list to see if this module is known
+			// to this source file.
+			for (newmod = topmod; newmod; newmod = newmod->next) {
+			    if (!strcmp(newmod->name, subname))
+				break;
+			}
+			if (newmod == NULL) {
+	 		    fputs(subname, fdep);
+			    fputs("\n", fdep);
+			}
+			free(instname);
+			free(subname);
+			instname = NULL;
+			subname = NULL;
+		    }
+		}
 		if (stack->suspend <= 1) {
 		    fputs(token, ftmp);
 		    fputs(" ", ftmp);
@@ -1005,7 +1244,7 @@ main(int argc, char *argv[])
 		    char *aptr, *cptr;
 		    int aval;
 
-		    newtok = advancetoken(fsource, ftmp, ']');
+		    newtok = advancetoken(&filestack, ftmp, ']');
 		    paramcpy(token, newtok, params);	// Substitute parameters
 		    fputs(token, ftmp);
 		    fputs("] ", ftmp);
@@ -1105,7 +1344,8 @@ main(int argc, char *argv[])
 		    pushstack(&stack, SENSELIST, stack->suspend);
 		}
 		else {
-		    fprintf(stderr, "Error:  Expected sensitivity list.\n");
+		    fprintf(stderr, "Error File %s Line %d:  Expected sensitivity list.\n",
+				filestack->filename, filestack->currentLine);
 		    popstack(&stack);
 		}
 		break;
@@ -1127,7 +1367,7 @@ main(int argc, char *argv[])
 		else if (!strcmp(token, ")")) {
 		    resetdone = 0;
 		    testreset = NULL;
-		    condition = -1;
+		    condition = UNKNOWN;
 		    stack->state = ABODY_PEND;
 
 		    // Regenerate always @() line with posedge clock only,
@@ -1238,10 +1478,19 @@ main(int argc, char *argv[])
 		    pushstack(&stack, CASE, 0);
 		}
 
-		// The following are for cases in which an ambiguous
-		// "end" ($^&*%^&! verilog syntax) is not followed by
-		// an "else" that continues an if statement, so we
-		// must pop the stack back to MBODY
+		// The following are for cases caused by sloppiness
+		// in "if" statement syntax in verilog syntax.
+		// An "always" not followed by a "begin" ... "end"
+		// block, but instead followed by "if" can then
+		// be followed by arbitrarily many "else if" statements,
+		// or none at all, so that one must watch for following
+		// statements that do not belong in an "always" block,
+		// like "wire", or "assign" or another "always", before
+		// one can know whether or not the end of the "always"
+		// block has been reached.
+
+		// We look for "always", "wire", "reg", and "assign".
+		// This is probably not a complete list.
 
 		else if (!strcmp(token, "always")) {
 		    while(stack->state != MBODY) popstack(&stack);
@@ -1250,6 +1499,18 @@ main(int argc, char *argv[])
 		    clocksig = NULL;
 		    condition = UNKNOWN;
 		    initvec = NULL;
+		}
+		else if (!strcmp(token, "wire")) {
+		    while(stack->state != MBODY) popstack(&stack);
+		    pushstack(&stack, WIRE, stack->suspend);
+		}
+		else if (!strcmp(token, "reg")) {
+		    while(stack->state != MBODY) popstack(&stack);
+		    pushstack(&stack, REGISTER, stack->suspend);
+		}
+		else if (!strcmp(token, "assign")) {
+		    while(stack->state != MBODY) popstack(&stack);
+		    pushstack(&stack, ASSIGNMENT, stack->suspend);
 		}
 
 		if (stack->suspend <= 1) {
@@ -1344,9 +1605,10 @@ main(int argc, char *argv[])
 				break;
 			}
 			if (testvec == NULL) {
-			    fprintf(stderr, "Error, line %d:  Reset condition is not an"
-					" assignment to a known registered signal.\n",
-					currentLine);
+			    fprintf(stderr, "Error File %s Line %d:  Reset condition "
+					"is not an assignment to a known registered "
+					"signal.\n", filestack->filename,
+					filestack->currentLine);
 			}
 			else {
 			    initvec = testvec;
@@ -1361,7 +1623,7 @@ main(int argc, char *argv[])
 			    // If token is a vector bundle, get all of it
 			    if (*token == '{') {
 				fputs(token, ftmp);
-				newtok = advancetoken(fsource, ftmp, '}');
+				newtok = advancetoken(&filestack, ftmp, '}');
 				paramcpy(token, newtok, params);
 				fputs(token, ftmp);
 				fputs("}", ftmp);
@@ -1381,7 +1643,7 @@ main(int argc, char *argv[])
 				free(testsig);
 			    }
 
-			    if ((bptr = parse_bit(currentLine, topmod, token, j))
+			    if ((bptr = parse_bit(filestack, topmod, token, j))
 					!= NULL) {
 
 				// NOTE:  The finit file uses signal<idx> notation
@@ -1398,7 +1660,7 @@ main(int argc, char *argv[])
 					j--;
 				    else
 					j++;
-			   	    bptr = parse_bit(currentLine, topmod, token, j);
+			   	    bptr = parse_bit(filestack, topmod, token, j);
 				    if (bptr != NULL)
 				        fprintf(finit, "%s<%d> %s\n", initvec->name,
 						j, bptr);
@@ -1425,11 +1687,23 @@ main(int argc, char *argv[])
 
 		if (!strcmp(token, ")")) {
 		    if (testreset != NULL) {
-			if (condition == -1) {
-			     fprintf(finit, "%s\n", testreset->name);
+			if (condition == UNKNOWN) {
+			    if (edgetype == NEGEDGE) {
+				fprintf(stderr, "Error File %s Line %d: Reset edgetype"
+					" is negative but first "
+					"condition checked is positive.\n",
+					filestack->filename, filestack->currentLine);
+			    }
+			    fprintf(finit, "%s\n", testreset->name);
 			}
 			else if (condition == NOT) {
-			     fprintf(finit, "~%s\n", testreset->name);
+			    if (edgetype == POSEDGE) {
+				fprintf(stderr, "Error File %s Line %d: Reset edgetype"
+					" is positive but first "
+					"condition checked is negative.\n",
+					filestack->filename, filestack->currentLine);
+			    }
+			    fprintf(finit, "~%s\n", testreset->name);
 			}
 		    }
 		    popstack(&stack);
@@ -1507,7 +1781,25 @@ main(int argc, char *argv[])
 		break;
 
 	    case SUBCIRCUIT:
-		/* To be completed */
+		if (!strcmp(token, "("))
+		    pushstack(&stack, SUBPIN, stack->suspend);
+		else if (!strcmp(token, ";"))
+		    popstack(&stack);
+
+		if (stack->suspend <= 1) {
+		    fputs(token, ftmp);
+		    fputs(" ", ftmp);
+		}
+		break;
+
+	    case SUBPIN:
+		if (!strcmp(token, ")"))
+		    popstack(&stack);
+
+		if (stack->suspend <= 1) {
+		    fputs(token, ftmp);
+		    fputs(" ", ftmp);
+		}
 		break;
 
 	    case CASE:
@@ -1528,7 +1820,7 @@ main(int argc, char *argv[])
 
     /* Done! */
 
-    fclose(fsource);
+    fclose(filestack->file);
     if (finit != NULL) fclose(finit);
     if (fclk != NULL) fclose(fclk);
     if (ftmp != NULL) fclose(ftmp);

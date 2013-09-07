@@ -17,7 +17,7 @@ QFLOW_ODIN_PATH = /home/tim/src/vtr/ODIN_II/odin_II.exe
 QFLOW_MAGIC_PATH = /usr/local/bin/magic
 
 OBJECTS = AddIO2BDnet.o BDnet2BSpice.o BDnet2Verilog.o CleanUpBDnet.o BDnetFanout.o
-OBJECTS += vpreproc.o dcombine.o vsplit.o blifrtl2bdnet.o liberty2tech.o
+OBJECTS += verilogpp.o dcombine.o vsplit.o blifrtl2bdnet.o liberty2tech.o
 SOURCES := $(patsubst %.o,%.c,$(OBJECTS))
 TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
 
@@ -37,8 +37,8 @@ BDnet2Verilog$(EXEEXT): BDnet2Verilog.o
 CleanUpBDnet$(EXEEXT): CleanUpBDnet.o
 	$(CC) $(LDFLAGS) CleanUpBDnet.o -o $@ $(LIBS)
 
-vpreproc$(EXEEXT): vpreproc.o
-	$(CC) $(LDFLAGS) vpreproc.o -o $@ $(LIBS)
+verilogpp$(EXEEXT): verilogpp.o
+	$(CC) $(LDFLAGS) verilogpp.o -o $@ $(LIBS)
 
 dcombine$(EXEEXT): dcombine.o
 	$(CC) $(LDFLAGS) dcombine.o -o $@ $(LIBS)

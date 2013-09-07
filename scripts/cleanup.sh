@@ -67,6 +67,7 @@ endif
 cd ${sourcedir}
 
 rm -f ${origname}.blif
+rm -f ${origname}.xml
 rm -f ${origname}_tmp.blif
 rm -f ${origname}_mapped.blif
 rm -f ${origname}.clk

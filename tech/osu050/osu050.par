@@ -22,7 +22,6 @@ RULES
 
     # Stacked vias allowed
     spacing via12 via23 0
-    spacing via23 via34 0
 
     overhang via12 metal1 8
     overhang via12 metal2 6

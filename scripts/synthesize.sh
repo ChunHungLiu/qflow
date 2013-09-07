@@ -86,11 +86,58 @@ touch ${synthlog}
 
 cd ${sourcedir}
 echo "Running verilog preprocessor" |& tee -a ${synthlog}
-${bindir}/vpreproc ${rootname}.v >>& ${synthlog}
+${bindir}/verilogpp ${rootname}.v >>& ${synthlog}
 
 # Hack for Odin-II bug:  to be removed when bug is fixed
 ${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
 mv ${rootname}_munge.v ${rootname}_tmp.v
+
+#---------------------------------------------------------------------
+# Create first part of the XML config file for Odin_II
+#---------------------------------------------------------------------
+
+cat > ${rootname}.xml << EOF
+<config>
+   <verilog_files>
+	<verilog_file>${rootname}_tmp.v</verilog_file>
+EOF
+
+#---------------------------------------------------------------------
+# Recursively run preprocessor on files in ${rootname}.dep
+# NOTE:  This assumes a 1:1 correspondence between filenames and
+# module names;  we need to search source files for the indicated
+# module names instead!
+#---------------------------------------------------------------------
+
+set alldeps = `cat ${rootname}.dep`
+
+while ( "x${alldeps}" != "x" )
+    set newdeps = $alldeps
+    set alldeps = ""
+    foreach subname ( $newdeps )
+	${bindir}/verilogpp ${subname}.v >>& ${synthlog}
+	set alldeps = "${alldeps} `cat ${subname}.dep`"
+	echo "      <verilog_file>${subname}_tmp.v</verilog_file>" \
+		>> ${rootname}.xml
+    end
+end
+
+#---------------------------------------------------------------------
+# Finish the XML file
+#---------------------------------------------------------------------
+
+cat >> ${rootname}.xml << EOF
+   </verilog_files>
+   <output>
+      <output_type>blif</output_type>
+      <output_path_and_name>${rootname}.blif</output_path_and_name>
+   </output>
+   <optimizations>
+   </optimizations>
+   <debug_outputs>
+   </debug_outputs>
+</config>
+EOF
 
 #---------------------------------------------------------------------
 # Spot check:  Did vpreproc produce file ${rootname}.init?
@@ -108,7 +155,7 @@ endif
 #---------------------------------------------------------------------
 
 echo "Running Odin_II for verilog parsing and synthesis" |& tee -a ${synthlog}
-eval ${bindir}/odin_ii -U0 -V ${rootname}_tmp.v -o ${rootname}.blif |& tee -a ${synthlog}
+eval ${bindir}/odin_ii -U0 -c ${rootname}.xml |& tee -a ${synthlog}
 
 #---------------------------------------------------------------------
 # Check for out-of-date Odin-II version.
@@ -129,6 +176,24 @@ endif
 #---------------------------------------------------------------------
 # Check for Odin-II compile-time errors
 #---------------------------------------------------------------------
+
+set errline=`cat ${synthlog} | grep "core dumped" | wc -l`
+if ( $errline == 1 ) then
+   echo ""
+   echo "Odin-II core dumped:"
+   echo "See file ${synthlog} for details."
+   echo ""
+   exit 1
+endif
+
+set errline=`cat ${synthlog} | grep "error in parsing" | wc -l`
+if ( $errline == 1 ) then
+   echo ""
+   echo "Odin-II verilog preprocessor errors occurred:"
+   echo "See file ${synthlog} for details."
+   echo ""
+   exit 1
+endif
 
 set errline=`cat ${synthlog} | grep "Odin has decided you have failed" | wc -l`
 if ( $errline == 1 ) then
@@ -178,6 +243,15 @@ if ( !( -f ${rootname}_mapped.blif || ( -M ${rootname}_mapped.blif \
    echo "ABC synthesis/mapping failure:  No file ${rootname}_mapped.blif." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   exit 1
+endif
+
+set errline=`cat ${synthlog} | grep "core dumped" | wc -l`
+if ( $errline == 1 ) then
+   echo ""
+   echo "ABC core dumped:"
+   echo "See file ${synthlog} for details."
+   echo ""
    exit 1
 endif
 
