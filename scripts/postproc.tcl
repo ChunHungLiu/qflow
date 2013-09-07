@@ -77,10 +77,6 @@ if {[gets $inet line] >= 0} {
    set resetnet $line
    set resetnet [string map {! not_ ~ not_} $resetnet]
    lappend resetlist $resetnet
-} else {
-   # Empty init file---therefore, no initialization to do.
-   file copy -force $bdnetfile $outfile
-   exit 0
 }
 
 set flopsigs {}

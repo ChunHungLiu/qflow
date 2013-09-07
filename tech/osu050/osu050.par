@@ -50,5 +50,5 @@ TWSC*even_rows_maximally : true
 
 GENR*feed_percentage  : 30.0
 GENR*row_to_tile_spacing: 1
-GENR*numrows		: 6
+# GENR*numrows		: 6
 GENR*flip_alternate_rows : 1
