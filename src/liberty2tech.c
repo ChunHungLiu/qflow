@@ -116,7 +116,7 @@ advancetoken(FILE *flib, char delimiter)
 	}
 
 	if (lineptr == NULL || *lineptr == '\n' || *lineptr == '\0') {
-	    result = fgets(line, LIB_LINE_MAX + 1, flib);
+	    result = fgets(line, LIB_LINE_MAX, flib);
 	    libCurrentLine++;
 	    if (result == NULL) return NULL;
 
@@ -124,7 +124,7 @@ advancetoken(FILE *flib, char delimiter)
  	    lptr = line;
 	    while (*lptr != '\n' && *lptr != '\0') {
 		if (*lptr == '\\') {
-		    result = fgets(lptr, LIB_LINE_MAX + 1 - (lptr - line), flib);
+		    result = fgets(lptr, LIB_LINE_MAX - (lptr - line), flib);
 		    libCurrentLine++;
 		    if (result == NULL) break;
 		}
@@ -1136,8 +1136,9 @@ main(int objc, char *argv[])
 	mintrise = *newcell->values;
 	maxtrise = *(newcell->values + newcell->reftable->csize - 1);
 
-	// Calculate delay per load
-	loaddelay = (maxtrise - mintrise) / (maxcap - mincap);
+	// Calculate delay per load.  Note that cap is typically in
+	// pF (we should confirm this!) but we want fF.
+	loaddelay = (maxtrise - mintrise) / (1000 * (maxcap - mincap));
 	newcell->slope = loaddelay;
 	newcell->mintrans = mintrise;
 

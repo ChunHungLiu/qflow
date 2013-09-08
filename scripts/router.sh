@@ -64,7 +64,7 @@ cd ${layoutdir}
 #------------------------------------------------------------------
 
 echo "Running qrouter"
-${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} -k \
+${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
 		${rootname} |& tee -a ${synthlog} | \
 		grep - -e fail -e Progess -e TotalRoutes.\*00
 

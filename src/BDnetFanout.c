@@ -523,7 +523,7 @@ void read_gate_file(char *gate_file_name)
 	 }
 
 	 if (format < 0) {
-	    fprintf(stderr, "Unknown format %s!  No gate configuration read!\n");
+	    fprintf(stderr, "Unknown format %s!  No gate configuration read!\n", t);
 	    return;
 	 }
 
@@ -723,7 +723,7 @@ void shownodes(void)
    for (nl = Nodel; nl->next; nl = nl->next) {
       printf("\n\nnode: %s with %d fanout and %g cap",
 		nl->nodename, nl->num_inputs, nl->total_load);
-      printf("\ndriven by %s, %s with %g strength.\n",
+      printf("\ndriven by %s, with %g strength.\n",
 		nl->outputgatename, nl->outputgatestrength);
    }
    exit(0);
@@ -839,6 +839,7 @@ void write_output(FILE *infptr, FILE *outfptr)
             bufferline[0] = 0;
             if (needscorrecting) {
 	       if (stren == NULL) {      // return val to insert inverters
+
 		  if (VerboseFlag)
 	             printf("\nInsert buffers %s - %g\n", s, inv_size);
 	          s = strstr(gateline, Nodename);	// get output node
@@ -853,7 +854,6 @@ void write_output(FILE *infptr, FILE *outfptr)
 		  else
 	             strcat(s, "_buf\";\n");            // rename it
 
-		  /* To do:  recursively insert ratioed buffers */
 		  cbest = best_size(Buffername, inv_size + WireCap, NULL);
 
 		  /* If cend is NULL, then we will have to break up this network */
@@ -931,6 +931,7 @@ void write_output(FILE *infptr, FILE *outfptr)
             else {
 	       stren = NULL;
             }
+
             if (strlen(gateline) > 0) gateline[strlen(gateline) - 1] = 0;
             fprintf(outfptr, "%s\n", gateline);
             fprintf(outfptr, "%s", bufferline); 
