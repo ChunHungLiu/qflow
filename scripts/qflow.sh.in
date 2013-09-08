@@ -171,6 +171,7 @@ endif
 
 set varfile=${projectpath}/qflow_vars.sh
 set execfile=${projectpath}/qflow_exec.sh
+set userfile=${projectpath}/project_vars.sh
 
 echo "#\!/bin/tcsh" > ${varfile}
 echo "#-------------------------------------------" >> ${varfile}
@@ -198,6 +199,30 @@ echo "#-------------------------------------------" >> ${execfile}
 echo "# qflow exec script for project ${project}" >> ${execfile}
 echo "#-------------------------------------------" >> ${execfile}
 echo "" >> ${execfile}
+
+#-----------------------------------------------------
+# The file "project_vars.sh" will ONLY be written if
+# one does not already exist, and then it will be an
+# empty file with a few pointers to values that can
+# be set by the user.
+#-----------------------------------------------------
+
+if ( ! -f ${userfile} ) then
+   echo "#\!/bin/tcsh" > ${userfile}
+   echo "#------------------------------------------------------------" >> ${userfile}
+   echo "# project variables for project ${project}" >> ${userfile}
+   echo "#------------------------------------------------------------" >> ${userfile}
+   echo "" >> ${userfile}
+   echo "# Extra fill percentage to add to the layout before placement" >> ${userfile}
+   echo "# set fill_percent =	10" >> ${userfile}
+   echo "" >> ${userfile}
+   # Add this in when the STA tool is done!
+   # echo "# Maximum operating frequency of the clock" >> ${userfile}
+   # echo "# set max_frequency =	10E6" >> ${userfile}
+   # echo "" >> ${userfile}
+   echo "#------------------------------------------------------------" >> ${userfile}
+   echo "" >> ${userfile}
+endif
 
 if ($dosynth == 0) then
    echo -n "# " >> ${execfile}

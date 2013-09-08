@@ -1,10 +1,15 @@
 #!/usr/bin/tclsh
 #
 # Usage:
-#	bdnet2cel.tcl <bdnet_filename> <lef_filename> [<cel_filename>]
+#	bdnet2cel.tcl [-f <fillcell> <value>] <bdnet_filename>
+#			<lef_filename> [<cel_filename>]
 #
 # If cel_filename is not specified, then name will be the root name
 # of the .bdnet file with the .cel extension.
+#
+# If "-f" is specified, it must be followed by the name of the fill
+# cell and a value which is a percentage by which to increase the
+# layout area of the cell using fill cells.
 #
 # NOTE:	Cells must be placed relative to the LEF bounding box during
 #	physical placement!
@@ -18,12 +23,27 @@
 #
 # Written by Tim Edwards July 25, 2006
 # MultiGiG, Inc.
+# Updated 9/8/2013 to incorporate fill cells to increase the
+# layout size and reduce routing congestion.
 #------------------------------------------------------------
 # LEF dimensions are microns unless otherwise stated.
 
 set units 100
 set pitchx 160		;# value overridden from LEF file
 set pitchy 200		;# value overridden from LEF file
+
+set fillp 0
+set fillc ""
+set fillcell ""
+if {$argc > 3} {
+   set farg [lindex $argv 0]
+   if {"$farg" == "-f"} {
+      set fillc [lindex $argv 1]
+      set fillp [lindex $argv 2]
+      incr argc -3
+      set argv [lrange $argv 3 end]
+   }
+}
 
 set bdnetfile [lindex $argv 0]
 set cellname [file rootname [file tail $bdnetfile]]
@@ -251,7 +271,15 @@ while {[gets $flef line] >= 0} {
       if {[lsearch $macrolist $macroname] >= 0} {
 	 # Parse the "macro" statement 
 	 parse_macro $flef $macroname
-
+      } elseif {[string match "${fillc}*" $macroname]} {
+	 # Use "fillc" as a prefix for the fill cell.  Find the largest	
+	 # matching fill cell to use for adding padding to the layout
+	 parse_macro $flef $macroname
+	 if {$fillcell == ""} {
+	    set fillcell $macroname
+	 } elseif {${macroname}(w) > ${fillcell}(w)} {
+	    set fillcell $macroname
+	 }
       } else {
 	 # This macro is not used. . . skip to end of macro
 	 while {[gets $flef line] >= 0} {
@@ -308,12 +336,15 @@ flush stdout
 set fnet [open $bdnetfile r]
 set mode none
 set i 0
+set atotal 0
 while {[gets $fnet line] >= 0} {
    if [regexp {^INSTANCE[ \t]+"([^"]+)"[ \t]*:[ \t]*"([^"]+)"} $line \
 		lmatch macroname macrotype] {
       set mode [string toupper $macroname]
       set left [set ${mode}(left)]
       set right [set ${mode}(right)]
+      set width [set ${mode}(w)]
+      set atotal [expr {$atotal + $width}]
       set top [set ${mode}(top)]
       set bottom [set ${mode}(bottom)]
       if {[catch {incr ${mode}(count)}]} {set ${mode}(count) 0}
@@ -345,6 +376,40 @@ while {[gets $fnet line] >= 0} {
    }
 }
 close $fnet
+
+if {($fillp > 0) && ("${fillcell}" != "")} {
+   set left [set ${fillcell}(left)]
+   set right [set ${fillcell}(right)]
+   set top [set ${fillcell}(top)]
+   set bottom [set ${fillcell}(bottom)]
+   set afill [set ${fillcell}(w)]
+   if {$afill > 0} {
+
+      # "atotal" is the total width of all the cells combined.
+      # "aextra" is the total width of fill cells needed to add "fillp"
+      #	    percentage extra area to the layout.
+      # "nfill" is the number of fill cells needed to generate the extra
+      #	    area.
+
+      set aextra [expr {($fillp * 0.01) * $atotal}]
+      set nfill [expr {int($aextra / $afill + 0.5)}]
+
+      puts stdout "Adding ${nfill} filler cells to pad layout by ${fillp} percent"
+      # puts stdout "Layout area is ${atotal}"
+      # puts stdout "Fill cell area is ${afill}, added area is ${aextra}"
+
+      # Add fill cells as if the .bdnet file had a bunch of "INSTANCE" lines
+      # for the fill cell
+
+      for {set k 0} {$k < $nfill} {incr k} {
+         if {[catch {incr ${fillcell}(count)}]} {set ${fillcell}(count) 0}
+         set j [set ${fillcell}(count)]
+         puts $fcel "cell $i ${fillcell}_$j"
+         puts $fcel "left $left right $right bottom $bottom top $top"
+         incr i
+      }
+   }
+}
 
 #----------------------------------------------------------------
 # Parse the contents of the .bdnet file again and dump each input or output
