@@ -446,15 +446,10 @@ endif
 cd ${projectpath}
 
 echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
-if ( ${?fill_percent} ) then
-   ${scriptdir}/bdnet2cel.tcl -f ${fillcell} ${fill_percent} \
-	${synthdir}/${rootname}.bdnet ${techdir}/${leffile} \
-	${layoutdir}/${rootname}.cel >>& ${synthlog}
-else
-   ${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
+
+${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
 	${techdir}/${leffile} \
 	${layoutdir}/${rootname}.cel >>& ${synthlog}
-endif
 
 #---------------------------------------------------------------------
 # Spot check:  Did bdnet2cel produce file ${rootname}.cel?

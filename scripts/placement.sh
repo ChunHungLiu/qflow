@@ -119,23 +119,22 @@ endif
 #---------------------------------------------------
 
 if ($makedef == 1) then
-   echo "Running place2def2.tcl"
    if ( "$techleffile" == "" ) then
-      ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-                ${techdir}/$leffile >>& ${synthlog}
+      ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
+                $fillcell ${techdir}/$leffile >>& ${synthlog}
    else
-      ${scriptdir}/place2def2.tcl $rootname ${bindir}/qrouter \
-                ${techdir}/$techleffile ${techdir}/$leffile \
-		>>& ${synthlog}
+      ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
+		$fillcell ${techdir}/$techleffile \
+		${techdir}/$leffile >>& ${synthlog}
    endif
 endif
 
 #---------------------------------------------------------------------
-# Spot check:  Did place2def2 produce file ${rootname}.def?
+# Spot check:  Did place2def produce file ${rootname}.def?
 #---------------------------------------------------------------------
 
 if ( !( -f ${rootname}.def || ( -M ${rootname}.def < -M ${rootname}.pin ))) then
-   echo "place2def2 failure:  No file ${rootname}.def." |& tee -a ${synthlog}
+   echo "place2def failure:  No file ${rootname}.def." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif

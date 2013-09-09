@@ -39,15 +39,15 @@ ENDRULES
 *graphics.wait        : off
 *last_chance.wait     : off
 
-TWMC*chip.aspect.ratio : 1.0
+TWMC*chip.aspect.ratio : 0.75
 
-TWSC*feedThruWidth    : 1 layer 1
+TWSC*feedThruWidth    : 240 layer 1
 TWSC*do.global.route  : on
-TWSC*ignore_feeds     : true
+# TWSC*ignore_feeds     : true
+TWSC*call_row_evener	: true
 TWSC*even_rows_maximally : true
 # TWSC*no.graphics    : on
 
-GENR*feed_percentage  : 30.0
 GENR*row_to_tile_spacing: 1
 # GENR*numrows		: 6
 GENR*flip_alternate_rows : 1
