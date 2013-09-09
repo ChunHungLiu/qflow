@@ -1,6 +1,5 @@
 # osu050.par --- Parameter file for TimberWolf
-# NOTE:  all units are magic internal units, 1 unit = 90nm
-# This file ASSUMES that "scalegrid 1 9" has been executed on startup
+# NOTE:  all distance units are in centimicrons unless otherwise stated
 
 RULES
     # Values are resistance in ohms/sq, and capacitance in fF/um^2
