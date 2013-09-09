@@ -44,6 +44,7 @@ ENDRULES
 *track.pitch	      : 0.0
 *graphics.wait        : off
 *last_chance.wait     : off
+*random.seed	      : 12345
 
 TWMC*chip.aspect.ratio : 0.75
 
