@@ -3,22 +3,29 @@
 # This file ASSUMES that "scalegrid 1 9" has been executed on startup
 
 RULES
-    layer metal1 1.00 1.00 horizontal
-    layer metal2 1.00 0.50 vertical
-    layer metal3 1.00 0.10 horizontal
+    # Values are resistance in ohms/sq, and capacitance in fF/um^2
+    layer metal1 0.09 0.032 horizontal
+    layer metal2 0.09 0.016 vertical
+    layer metal3 0.05 0.010 horizontal
 
     via via12 metal1 metal2
     via via23 metal2 metal3
 
-    width metal1 80
-    width metal2 80
-    width metal3 80
-    width via12 80
-    width via23 80
+    width metal1 90
+    width metal2 90
+    width metal3 150
+    width via12 150
+    width via23 150
 
-    spacing metal1 metal1 160
-    spacing metal2 metal2 160
-    spacing metal3 metal3 160
+    # Note:  width + spacing = track pitch, as far as TimberWolf is
+    # concerned.  So adjust spacing to make the correct pitch.
+    # A track pitch < actual track pitch may cause pins to overlap!
+    # Track pitches for the preferred routing direction are:
+    # metal1: 300, metal2: 240, metal3: 300
+
+    spacing metal1 metal1 210
+    spacing metal2 metal2 150
+    spacing metal3 metal3 150
 
     # Stacked vias allowed
     spacing via12 via23 0

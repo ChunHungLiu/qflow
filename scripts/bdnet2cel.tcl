@@ -352,8 +352,8 @@ while {[gets $fnet line] >= 0} {
       set feedx [expr {$left + ($pitchx / 2) + ($trackskip * $pitchx)}]
       set k 1
       while {$feedx < $right} {
-      	 puts $fcel "pin name feed${k} signal TW_PASS_THRU layer 1 $feedx $bottom"
-      	 puts $fcel "   equiv name feed${k} layer 1 $feedx $top"
+      	 puts $fcel "pin name twfeed${k} signal TW_PASS_THRU layer 1 $feedx $bottom"
+      	 puts $fcel "   equiv name twfeed${k} layer 1 $feedx $top"
       	 set feedx [expr {$feedx + $pitchx}]
       	 incr k
       }
