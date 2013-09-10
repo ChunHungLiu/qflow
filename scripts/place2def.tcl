@@ -612,7 +612,8 @@ while {[gets $fpin line] >= 0} {
       puts $fdef "- $netname"
    }
 
-   if {[string first twfeed ${instance}] == -1} { 
+   if {([string first twfeed ${instance}] == -1) &&
+		([string first twfeed ${pinname}] != 0)} {
       if {[string first twpin_ ${instance}] == 0} { 
          if {$newnet == 0} {
 	    puts $fdef ""	;# end each net component with newline
