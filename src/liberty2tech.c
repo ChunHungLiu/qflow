@@ -1138,12 +1138,15 @@ main(int objc, char *argv[])
 
 	// Calculate delay per load.  Note that cap is typically in
 	// pF (we should confirm this!) but we want fF.
+	// So the value of loaddelay is in ps/fF.
 	loaddelay = (maxtrise - mintrise) / (1000 * (maxcap - mincap));
 	newcell->slope = loaddelay;
 	newcell->mintrans = mintrise;
 
 	// Calculate internal capacitance
-	intcap = 1000 * ((mintrise / loaddelay) - mincap);
+	// risetime is ps, so (risetime / loaddelay) is fF.
+	// mincap is in pF, so multiply by 1000 to get fF
+	intcap = (mintrise / loaddelay) - (1000.0 * mincap);
 
 	// Print out all values so far.
 	fprintf(fcfg, "%s  %g %d %g  ", newcell->name, loaddelay,
@@ -1196,13 +1199,16 @@ main(int objc, char *argv[])
 	fprintf(fgen, "GATE %s %g %s;\n", newcell->name,
 	    newcell->area, newcell->function);
 
+	/* Units are:  cap in pF, maxload in pF, risetime in ns,	*/
+	/* slope in ns/pF, falltime in ns, slope in ns/pF.		*/
+
 	for (newpin = newcell->pins; newpin; newpin = newpin->next) {
 	    if (newpin->type == INPUT)
 		fprintf(fgen, "   PIN %s %s %g %g %g %g %g %g\n",
 			newpin->name, "UNKNOWN", newpin->cap,
-			newpin->maxtrans / newcell->slope,
-			newcell->mintrans, newcell->slope,
-			newcell->mintrans, newcell->slope);
+			newpin->maxtrans / (1000.0 * newcell->slope),
+			newcell->mintrans / 1000.0, newcell->slope,
+			newcell->mintrans / 1000.0, newcell->slope);
 	}
 	fprintf(fgen, "\n");
     }
