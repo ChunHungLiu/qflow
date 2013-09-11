@@ -463,14 +463,6 @@ if ( !( -f ${layoutdir}/${rootname}.cel || ( -M ${layoutdir}/${rootname}.cel \
 endif
 
 #-------------------------------------------------------------------------
-# Don't overwrite an existing .par file.
-#-------------------------------------------------------------------------
-
-if (!(-f ${layoutdir}/${rootname}.par)) then
-   cp ${techdir}/${techname}.par ${layoutdir}/${rootname}.par
-endif
-
-#-------------------------------------------------------------------------
 # Notice about editing should be replaced with automatic handling of
 # user directions about what to put in the .par file, like number of
 # rows or cell aspect ratio, etc., etc.

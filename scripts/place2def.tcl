@@ -514,7 +514,8 @@ while {[gets $fpl1 line] >= 0} {
 
       # Reposition the pins to match track positions.  Make pins point labels.
       # Do NOT offset by (offsetx, offsety) because the offset has been applied
-      # to the cell positions.
+      # to the cell positions.  TimberWolf may violate track pitch, so record
+      # positions used and avoid overlap.
 
       set pincx [expr $pincx - $halfpitchx]
       set pincy [expr $pincy - $halfpitchy]
@@ -522,6 +523,16 @@ while {[gets $fpl1 line] >= 0} {
       set ygrid [expr 1 + floor($pincy / $pitchy)]
       set llx [expr $xgrid * $pitchx]
       set lly [expr $ygrid * $pitchy]
+      while {![catch {eval [subst {set posused(${llx},${lly})}]}]} {
+         puts -nonewline stdout "Caught TimberWolf being bad:  "
+         puts stdout "Pin $labname overlaps pin $posused(${llx},${lly})"
+         if {$row == -1 || $row == -2} {
+            set llx [expr $llx + $pitchx]
+         } else {
+            set lly [expr $lly + $pitchy]
+         }
+      }
+      set posused(${llx},${lly}) $labname
 
       puts $fdef "- $labname + NET $labname"
       puts $fdef "  + LAYER $labtype ( 0 0 ) ( 1 1 )"

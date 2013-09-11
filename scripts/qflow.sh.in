@@ -173,6 +173,23 @@ set varfile=${projectpath}/qflow_vars.sh
 set execfile=${projectpath}/qflow_exec.sh
 set userfile=${projectpath}/project_vars.sh
 
+#------------------------------------------------------------------
+# Check if a variables file exists.  If so, note that we are
+# regenerating the flow, source the file, check if the technology
+# is being changed, and report if so.
+#------------------------------------------------------------------
+
+set newtech = 0
+if ( -f $varfile ) then
+   set techorig=`cat $varfile | grep techname= | cut -d= -f2`
+   if ( "${tech}" != "${techorig}" ) then
+      echo "Warning:  Project technology changed from ${techorig} to ${tech}"
+      set newtech = 1
+   else
+      echo "Regenerating files for existing project ${modulename}"
+   endif
+endif
+
 echo "#\!/bin/tcsh" > ${varfile}
 echo "#-------------------------------------------" >> ${varfile}
 echo "# qflow variables for project ${project}" >> ${varfile}
@@ -269,11 +286,43 @@ endif
 chmod u+x ${execfile}
 
 # Drop the magic startup file into the layout directory if it does not exist
+# If it exists but the technology directory has a newer file, or if we are
+# changing technologies, then copy the old file to a backup and create a new
+# one.
+
 if (-d ${layoutdir}) then
    if (!(-f ${layoutdir}/.magicrc)) then
       cp ${techdir}/${magicrc} ${layoutdir}/.magicrc
+   else if ( $newtech == 1 ) then
+      echo "Technology changed:  Old .magicrc file moved to .magicrc.orig"
+      cp ${layoutdir}/.magicrc ${layoutdir}/.magicrc.orig
+      cp ${techdir}/${magicrc} ${layoutdir}/.magicrc
+   else if ( -M ${techdir}/${magicrc} > -M ${layoutdir}/.magicrc ) then
+      echo -n "Technology .magicrc file has been updated.  "
+      echo "Old .magicrc file moved to .magicrc.orig"
+      cp ${layoutdir}/.magicrc ${layoutdir}/.magicrc.orig
+      cp ${techdir}/${magicrc} ${layoutdir}/.magicrc
    endif
 endif
+
+# Drop the Timberwolf parameter file into the layout directory if it does not
+# exist.  Like the above, check if the techdir has a newer version, or if we
+# are changing technologies.
+
+if (-d ${layoutdir}) then
+   if (!(-f ${layoutdir}/${modulename}.par)) then
+      cp ${techdir}/${techname}.par ${layoutdir}/${modulename}.par
+   else if ( $newtech == 1 ) then
+      echo "Technology changed:  Old .par file moved to .par.orig"
+      cp ${layoutdir}/${modulename}.par ${layoutdir}/${modulename}.par.orig
+      cp ${techdir}/${techname}.par ${layoutdir}/${modulename}.par
+   else if ( -M ${techdir}/${techname}.par > -M ${layoutdir}/${modulename}.par ) then
+      echo "Technology .par file has been updated.  Old .par file moved to .par.orig"
+      cp ${layoutdir}/${modulename}.par ${layoutdir}/${modulename}.par.orig
+      cp ${techdir}/${techname}.par ${layoutdir}/${modulename}.par
+   endif
+endif
+
 
 # Execute the script file to run any command that has not been commented out
 exec ${execfile}
