@@ -28,6 +28,7 @@ set leffile	[lindex $argv 3]
 set bufname	[lindex $argv 4]
 
 set pinfile ${layoutdir}/${modulename}.pin
+set parfile ${layoutdir}/${modulename}.par
 set bdnetfile ${synthdir}/${modulename}.bdnet
 set outfile ${synthdir}/${modulename}_tmp.bdnet
 set ignorefile ${synthdir}/${modulename}_nofanout
@@ -58,8 +59,21 @@ if ![catch {open ${ignorefile} r} fign] {
    }
    close $fign
    set ignorenets [lsort -uniq $ignorenets]
+   puts stdout "nets to be ignored: $ignorenets"
 }
-puts stdout "nets to be ignored: $ignorenets"
+
+if ![catch {open ${parfile} r} fpar] {
+   # Not an error to not have a .par file, but if we do, read
+   # it to see if there is a random.seed value, and use it to
+   # see the Tcl random number generator. 
+   while {[gets $fpar line] >= 0} {
+      if [regexp {random\.seed[ \t]*:[ \t]*([0-9]+)} $line lmatch seedval] {
+	 srand $seedval
+	 break
+      }
+   }
+   close $fpar
+}
 
 #------------------------------------------------------------------
 # Pick up list of nets not to break up into trees (e.g., vdd, gnd)
