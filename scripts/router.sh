@@ -51,6 +51,16 @@ source ${projectpath}/qflow_vars.sh
 source ${techdir}/${techname}.sh
 cd ${projectpath}
 
+if ( ${?resolution} ) then
+   if ( $resolution == 1 ) then
+      set scaleopt = ""
+   else
+      set scaleopt = "-r $resolution"
+   endif
+else
+   set scaleopt = ""
+endif
+
 #----------------------------------------------------------
 # Done with initialization
 #----------------------------------------------------------
@@ -65,7 +75,7 @@ cd ${layoutdir}
 
 echo "Running qrouter"
 ${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
-		${rootname} |& tee -a ${synthlog} | \
+		${scaleopt} ${rootname} |& tee -a ${synthlog} | \
 		grep - -e fail -e Progess -e TotalRoutes.\*00\$
 
 #---------------------------------------------------------------------
