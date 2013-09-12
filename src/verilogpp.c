@@ -900,7 +900,8 @@ main(int argc, char *argv[])
 	if (!strcmp(newtok, "`endif")) {
 	    istack *istacktest;
 	    if (ifdefstack == NULL) {
-		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n");
+		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n",
+				filestack->filename, filestack->currentLine);
 	    }
 	    else {
 		istacktest = ifdefstack;
@@ -911,7 +912,8 @@ main(int argc, char *argv[])
 	}
 	else if (!strcmp(newtok, "`else")) {
 	    if (ifdefstack == NULL) {
-		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n");
+		fprintf(stderr, "Error: File %s Line %d, `else with no `ifdef\n",
+				filestack->filename, filestack->currentLine);
 	    }
 	    else {
 		// A state of -1 does not change.  Only change 1->0 and 0->1

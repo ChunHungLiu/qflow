@@ -222,14 +222,14 @@ proc parse_macro {leffile macroname} {
       if [regexp {[ \t]*SYMMETRY[ \t]+(.+)[ \t]*;} $line lmatch symmetry] {
 	 set ${macroname}(symmetry) $symmetry
       } elseif [regexp {[ \t]*ORIGIN[ \t]+(.+)[ \t]+(.+)[ \t]*;} $line lmatch x y] {
-	 set x [expr {int($x * $units)}]
-	 set y [expr {int($y * $units)}]
+	 set x [expr {round($x * $units)}]
+	 set y [expr {round($y * $units)}]
 	 set ${macroname}(x) $x
 	 set ${macroname}(y) $y
       } elseif [regexp {[ \t]*SIZE[ \t]+(.+)[ \t]+BY[ \t]+(.+)[ \t]*;} \
 			$line lmatch w h] {
-	 set w [expr {int($w * $units)}]
-	 set h [expr {int($h * $units)}]
+	 set w [expr {round($w * $units)}]
+	 set h [expr {round($h * $units)}]
 	 set ${macroname}(w) $w
 	 set ${macroname}(h) $h
 
