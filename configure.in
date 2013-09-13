@@ -105,6 +105,23 @@ AC_ARG_WITH(timberwolf,
 AC_DEFINE_UNQUOTED(QFLOW_TWRC_PATH, "$QFLOW_TWRC_PATH")
 QFLOW_TW_PATH=${ac_cv_path_QFLOW_TWRC_PATH%/.twrc}
 
+dnl Path to vtr: Simpler alternative to specifying path for abc and Odin_II
+
+AC_ARG_WITH(vtr,
+[  --with-vtr=DIR		path to vtr distribution top-level directory], [
+   if test -d "$withval"; then
+      QFLOW_VTR_DIR=$withval
+   else
+      QFLOW_VTR_DIR=${PATH}
+   fi
+   QFLOW_ABC_DIR=${QFLOW_VTR_DIR}/abc_with_bb_support
+   QFLOW_ODIN_DIR=${QFLOW_VTR_DIR}/ODIN_II
+   AC_PATH_PROG(QFLOW_ODIN_PATH, odin_II.exe, , $QFLOW_ODIN_DIR)
+   AC_PATH_PROG(QFLOW_ABC_PATH, abc, , $QFLOW_ABC_DIR)
+], [
+   AC_PATH_PROG(QFLOW_ABC_PATH, abc, , )
+   AC_PATH_PROG(QFLOW_ODIN_PATH, odin_II.exe, , )])
+
 dnl Path to Odin-II
 
 AC_ARG_WITH(odin_II,
@@ -139,6 +156,8 @@ AC_ARG_WITH(abc,
 ], [
    AC_PATH_PROG(QFLOW_ABC_PATH, abc, , )])
 AC_DEFINE_UNQUOTED(QFLOW_ABC_PATH, "$QFLOW_ABC_PATH")
+
+dnl Target library location
 
 AC_ARG_WITH(libdir,
 [  --with-libdir=DIR			path to qflow runtime files], [

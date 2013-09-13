@@ -648,6 +648,7 @@ with_tclsh
 with_magic
 with_qrouter
 with_timberwolf
+with_vtr
 with_odin_II
 with_abc
 with_libdir
@@ -1283,6 +1284,7 @@ Optional Packages:
   --with-magic=DIR		path to magic-8.0
   --with-qrouter=DIR		path to qrouter
   --with-timberwolf=DIR		path to TimberWolf .twrc file
+  --with-vtr=DIR		path to vtr distribution top-level directory
   --with-odin_II=DIR		path to odin_II.exe
   --with-abc=DIR		path to ABC executable
   --with-libdir=DIR			path to qflow runtime files
@@ -4045,6 +4047,184 @@ QFLOW_TW_PATH=${ac_cv_path_QFLOW_TWRC_PATH%/.twrc}
 
 
 
+# Check whether --with-vtr was given.
+if test "${with_vtr+set}" = set; then :
+  withval=$with_vtr;
+   if test -d "$withval"; then
+      QFLOW_VTR_DIR=$withval
+   else
+      QFLOW_VTR_DIR=${PATH}
+   fi
+   QFLOW_ABC_DIR=${QFLOW_VTR_DIR}/abc_with_bb_support
+   QFLOW_ODIN_DIR=${QFLOW_VTR_DIR}/ODIN_II
+   # Extract the first word of "odin_II.exe", so it can be a program name with args.
+set dummy odin_II.exe; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ODIN_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ODIN_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ODIN_PATH="$QFLOW_ODIN_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $QFLOW_ODIN_DIR
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ODIN_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ODIN_PATH=$ac_cv_path_QFLOW_ODIN_PATH
+if test -n "$QFLOW_ODIN_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ODIN_PATH" >&5
+$as_echo "$QFLOW_ODIN_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+   # Extract the first word of "abc", so it can be a program name with args.
+set dummy abc; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ABC_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ABC_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ABC_PATH="$QFLOW_ABC_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $QFLOW_ABC_DIR
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ABC_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ABC_PATH=$ac_cv_path_QFLOW_ABC_PATH
+if test -n "$QFLOW_ABC_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ABC_PATH" >&5
+$as_echo "$QFLOW_ABC_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+
+else
+
+   # Extract the first word of "abc", so it can be a program name with args.
+set dummy abc; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ABC_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ABC_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ABC_PATH="$QFLOW_ABC_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ABC_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ABC_PATH=$ac_cv_path_QFLOW_ABC_PATH
+if test -n "$QFLOW_ABC_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ABC_PATH" >&5
+$as_echo "$QFLOW_ABC_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+   # Extract the first word of "odin_II.exe", so it can be a program name with args.
+set dummy odin_II.exe; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QFLOW_ODIN_PATH+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QFLOW_ODIN_PATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QFLOW_ODIN_PATH="$QFLOW_ODIN_PATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_QFLOW_ODIN_PATH="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QFLOW_ODIN_PATH=$ac_cv_path_QFLOW_ODIN_PATH
+if test -n "$QFLOW_ODIN_PATH"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QFLOW_ODIN_PATH" >&5
+$as_echo "$QFLOW_ODIN_PATH" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+fi
+
+
+
+
 # Check whether --with-odin_II was given.
 if test "${with_odin_II+set}" = set; then :
   withval=$with_odin_II;
@@ -4248,6 +4428,7 @@ fi
 cat >>confdefs.h <<_ACEOF
 #define QFLOW_ABC_PATH "$QFLOW_ABC_PATH"
 _ACEOF
+
 
 
 
