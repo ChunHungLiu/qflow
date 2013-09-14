@@ -4,6 +4,12 @@
 # qflow.sh --- main program shell script
 #------------------------------------------------------------------
 
+echo ""
+echo "--------------------------------"
+echo "Qflow project setup"
+echo "--------------------------------"
+echo ""
+
 # Environment variable overrides the tech type in all cases except
 # when the technology is specified on the command line by -T.  If
 # the environment variable is not set, the technology defaults to
@@ -11,7 +17,16 @@
 
 set tech=`printenv QFLOW_TECH`
 if ( $tech == "" ) then
-   set tech=osu035
+   # But. . . check if there is already a "qflow_vars.sh".  If so,
+   # parse it for "techname", and use that preferentially over the
+   # default technology.
+   if ( -f qflow_vars.sh ) then
+      set tech=`cat qflow_vars.sh | grep techname | cut -d= -f2`
+      echo "Technology set to $tech from existing qflow_vars.sh file"
+   else
+      set tech=osu035
+      echo "No technology specified or found;  using default technology $tech"
+   endif
 endif
 
 # Environment variable overrides the project root path in all cases
@@ -298,7 +313,9 @@ endif
 echo "${scriptdir}/display.sh ${projectpath} ${modulename}" >> ${execfile}
 
 if ( $actions == 0 ) then
-   echo "No actions specified.  Creating flow script ${execfile} only."
+   echo "No actions specified on command line;"
+   echo "creating qflow script file ${execfile} only."
+   echo "Uncomment lines in this file and source the file to run the flow."
 endif
 
 chmod u+x ${execfile}
