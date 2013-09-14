@@ -68,12 +68,16 @@ touch ${synthlog}
 # nets, not just the clock).
 #---------------------------------------------------------------------
 
+if (! ${?clocktree_options}) then
+   set clocktree_options = ""
+endif
+
 if (-f ${layoutdir}/${rootname}.pin ) then
    echo "Running clocktree"
    echo "" |& tee -a ${synthlog}
    ${scriptdir}/clocktree.tcl ${rootname} ${synthdir} \
 		${layoutdir} ${techdir}/${leffile} ${bufcell} \
-		>> ${synthlog}
+		${clocktree_options} >> ${synthlog}
 else
    echo "Error:  No pin file ${layoutdir}/${rootname}.pin." |& tee -a ${synthlog}
    echo "Did you run initial_placement.sh on this design?" |& tee -a ${synthlog}
@@ -110,13 +114,17 @@ rm -f ${rootname}_tmp.bdnet
 # command line (default is 18fF). . .
 #---------------------------------------------------------------------
 
+if (! ${?fanout_options} ) then
+   set fanout_options = "-l 75 -c 25"
+endif
+
 echo "Running BDnetFanout (iterative)" |& tee -a ${synthlog}
 echo "" |& tee -a ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
       mv ${rootname}.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_nofanout \
+      ${bindir}/BDnetFanout ${fanout_options} -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}

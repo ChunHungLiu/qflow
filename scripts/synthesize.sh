@@ -16,48 +16,31 @@
 # Open Circuit Design
 #-------------------------------------------------------------------------
 
-if ($#argv < 2) then
-   echo Usage:  synthesize.sh [options] <project_path> <source_name>
-   exit 1
-endif
-
-# Split out options from the main arguments
-set argline=`getopt "c:b:f:v:nx" $argv[1-]`
-
-# Corrected 9/9/08; quotes must be added or "-n" disappears with "echo".
-set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
-set argc=`echo $cmdargs | wc -w`
-
-if ($argc == 2) then
-   set argv1=`echo $cmdargs | cut -d' ' -f1`
-   set argv2=`echo $cmdargs | cut -d' ' -f2`
+if ($#argv == 2) then
+   set projectpath=$argv[1]
+   set sourcename=$argv[2]
 else
-   echo Usage:  synthesize.sh [options] <project_path> <source_name>
+   echo Usage:  synthesize.sh <project_path> <source_name>
+   echo
    echo   where
+   echo
    echo	      <project_path> is the name of the project directory containing
    echo			a file called qflow_vars.sh.
+   echo
    echo	      <source_name> is the root name of the verilog file, and
-   echo	  options:
-   echo			Options are passed to AddIOtoBDNet
+   echo
+   echo	      Options are set from project_vars.sh.  Use the following
+   echo	      variable names:
+   echo
+   echo			$vpp_options	for verilog preprocessor
+   echo			$odin_options	for Odin-II
+   echo			$abc_options	for ABC
+   echo			$abc_script	file containing alternative abc script
+   echo			$fanout_options	for BDnetFanout
    exit 1
 endif
 
-set projectpath=$argv1
-set sourcename=$argv2
 set rootname=${sourcename:h}
-
-set options=""
-eval set argv=\($argline:q\)
-while ($#argv > 0)
-   switch (${1:q})
-      case --:
-         break
-      default:
-	 set options="$options ${1:q}"
-	 breaksw
-   endsw
-   shift
-end
 
 #---------------------------------------------------------------------
 # This script is called with the first argument <project_path>, which should
@@ -84,9 +67,13 @@ touch ${synthlog}
 # a ".init" file for post-processing
 #---------------------------------------------------------------------
 
+if ( ! ${?vpp_options} ) then
+   set vpp_options = ""
+endif
+
 cd ${sourcedir}
 echo "Running verilog preprocessor" |& tee -a ${synthlog}
-${bindir}/verilogpp ${rootname}.v >>& ${synthlog}
+${bindir}/verilogpp ${vpp_options} ${rootname}.v >>& ${synthlog}
 
 # Hack for Odin-II bug:  to be removed when bug is fixed
 ${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
@@ -115,7 +102,7 @@ while ( "x${alldeps}" != "x" )
     set newdeps = $alldeps
     set alldeps = ""
     foreach subname ( $newdeps )
-	${bindir}/verilogpp ${subname}.v >>& ${synthlog}
+	${bindir}/verilogpp ${vpp_options} ${subname}.v >>& ${synthlog}
 	set alldeps = "${alldeps} `cat ${subname}.dep`"
 	echo "      <verilog_file>${subname}_tmp.v</verilog_file>" \
 		>> ${rootname}.xml
@@ -154,8 +141,12 @@ endif
 # Run odin_ii on the verilog source to get a BLIF output file
 #---------------------------------------------------------------------
 
+if ( ! ${?odin_options} ) then
+   set odin_options = ""
+endif
+
 echo "Running Odin_II for verilog parsing and synthesis" |& tee -a ${synthlog}
-eval ${bindir}/odin_ii -U0 -c ${rootname}.xml |& tee -a ${synthlog}
+eval ${bindir}/odin_ii ${odin_options} -U0 -c ${rootname}.xml |& tee -a ${synthlog}
 
 #---------------------------------------------------------------------
 # Check for out-of-date Odin-II version.
@@ -220,10 +211,34 @@ endif
 # Logic optimization with abc, using the standard "resyn2" script from
 # the distribution (see file abc.rc).  Map to the standard cell set and
 # write a netlist-type BLIF output file of the mapped circuit.
+#
+# If the project_vars.sh contains a variable "abc_script", then it
+# should point to a file that contains some alternative to the "resyn2"
+# script.  The standard read/write commands will be executed normally,
+# and the alternative script applied in between.
 #---------------------------------------------------------------------
 
+if ( ! ${?abc_options} ) then
+   set abc_options = ""
+endif
+
 echo "Running abc for logic optimization" |& tee -a ${synthlog}
-${bindir}/abc >>& ${synthlog} << EOF
+
+if ( ${?abc_script} ) then
+   cat > abc.script << EOF
+read_blif ${rootname}.blif
+read_library ${techdir}/${techname}.genlib
+read_super ${techdir}/${techname}.super
+EOF
+   cat ${abc_script} >> abc.script
+   cat >> abc.script << EOF
+map
+write_blif ${rootname}_mapped.blif
+quit
+EOF
+   ${bindir}/abc ${abc_options} -f abc.script >>& ${synthlog}
+else
+   ${bindir}/abc ${abc_options} >>& ${synthlog} << EOF
 read_blif ${rootname}.blif
 read_library ${techdir}/${techname}.genlib
 read_super ${techdir}/${techname}.super
@@ -233,6 +248,7 @@ map
 write_blif ${rootname}_mapped.blif
 quit
 EOF
+endif
 
 #---------------------------------------------------------------------
 # Spot check:  Did ABC produce file ${rootname}_mapped.blif?
@@ -341,7 +357,7 @@ endif
 #---------------------------------------------------------------------
 # echo "Running AddIO2BDnet"
 # ${bindir}/AddIO2BDnet -t ${techdir}/${techname}.genlib \
-# 	-b ${bufcell} -f ${flopcell} $options \
+# 	-b ${bufcell} -f ${flopcell} \
 # 	${rootname}_tmp.bdnet > ${rootname}_buf.bdnet
 
 # Make a copy of the original bdnet file, as this will be overwritten
@@ -367,13 +383,17 @@ if ($?vddnet) then
    echo $vddnet >> ${rootname}_nofanout
 endif
 
+if (! $?fanout_options) then
+   set fanout_options="-l 75 -c 25"
+endif
+
 echo "Running BDnetFanout (iterative)" |& tee -a ${synthlog}
 echo "" >> ${synthlog}
 if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
       mv ${rootname}.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout -l 75 -c 25 -f ${rootname}_nofanout \
+      ${bindir}/BDnetFanout ${fanout_options} -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}

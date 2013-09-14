@@ -11,7 +11,7 @@
 #----------------------------------------------------------
 
 if ($#argv < 2) then
-   echo Usage:  placement.sh [options] <project_path> <source_name>
+   echo Usage:  placement.sh <project_path> <source_name>
    exit 1
 endif
 
@@ -32,6 +32,11 @@ else
    echo       [options] are:
    echo			-k	keep working files
    echo			-d	generate DEF file for routing
+   echo
+   echo	  Options to specific tools can be specified with the following
+   echo	  variables in project_vars.sh:
+   echo
+   echo
    exit 1
 endif
 

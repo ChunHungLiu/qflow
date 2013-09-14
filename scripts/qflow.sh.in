@@ -230,8 +230,26 @@ if ( ! -f ${userfile} ) then
    echo "# project variables for project ${project}" >> ${userfile}
    echo "#------------------------------------------------------------" >> ${userfile}
    echo "" >> ${userfile}
-   echo "# Extra fill percentage to add to the layout before placement" >> ${userfile}
-   echo "# set fill_percent =	10" >> ${userfile}
+   echo "# Synthesis command options:" >> ${userfile}
+   echo "# -------------------------------------------" >> ${userfile}
+   echo "# set vpp_options = " >> ${userfile}
+   echo "# set odin_options = " >> ${userfile}
+   echo "# set abc_options = " >> ${userfile}
+   echo "# set abc_script = " >> ${userfile}
+   echo "# set fanout_options = " >> ${userfile}
+   echo "" >> ${userfile}
+   echo "# Resynthesis command options:" >> ${userfile}
+   echo "# -------------------------------------------" >> ${userfile}
+   echo "# set clocktree_options = " >> ${userfile}
+   echo "# set fanout_options = " >> ${userfile}
+   echo "" >> ${userfile}
+   echo "# Placement command options:" >> ${userfile}
+   echo "# -------------------------------------------" >> ${userfile}
+   echo "" >> ${userfile}
+   echo "# Router command options:" >> ${userfile}
+   echo "# -------------------------------------------" >> ${userfile}
+   echo "# set qrouter_options = " >> ${userfile}
+   echo ""
    echo "" >> ${userfile}
    # Add this in when the STA tool is done!
    # echo "# Maximum operating frequency of the clock" >> ${userfile}
