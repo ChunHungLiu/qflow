@@ -119,10 +119,6 @@ if ( !( -f ${rootname}.pin || ( -M ${rootname}.pin < -M ${rootname}.cel ))) then
    exit 1
 endif
 
-if (! ${?via_stacks} ) then
-   set via_stacks = 2
-endif
-
 #---------------------------------------------------
 # 2) Prepare DEF and .cfg files for qrouter
 #---------------------------------------------------
@@ -130,11 +126,35 @@ endif
 if ($makedef == 1) then
    if ( "$techleffile" == "" ) then
       ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-                $fillcell $via_stacks ${techdir}/$leffile >>& ${synthlog}
+                $fillcell ${techdir}/$leffile >>& ${synthlog}
    else
       ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-		$fillcell $via_stacks ${techdir}/$techleffile \
+		$fillcell ${techdir}/$techleffile \
 		${techdir}/$leffile >>& ${synthlog}
+   endif
+
+   # Variables "via_pattern" (none, normal, invert) and "via_stacks"
+   # can be specified in the tech script, and are appended to the
+   # qrouter configuration file.  via_stacks defaults to 2 if not
+   # specified.  It can be overridden from the user's .cfg2 file.
+
+   if ( ${?via_pattern} ) then
+      echo "" >> ${rootname}.cfg
+      echo "via_pattern ${via_pattern}" >> ${rootname}.cfg
+   endif
+
+   if (! ${?via_stacks} ) then
+      set via_stacks=2
+   endif
+
+   echo "" >> ${rootname}.cfg
+   echo "via_stacks ${via_stacks}" >> ${rootname}.cfg
+
+   # If there is a file called ${rootname}.cfg2, then append it to the
+   # ${rootname}.cfg file
+
+   if ( -f ${rootname}.cfg2 ) then
+      cat ${rootname}.cfg2 >> ${rootname}.cfg
    endif
 endif
 
