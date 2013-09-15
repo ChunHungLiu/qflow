@@ -16,16 +16,17 @@ echo ""
 # the technology that is issued with the qflow distribution.
 
 set tech=`printenv QFLOW_TECH`
+set has_tech=0
 if ( $tech == "" ) then
    # But. . . check if there is already a "qflow_vars.sh".  If so,
    # parse it for "techname", and use that preferentially over the
    # default technology.
    if ( -f qflow_vars.sh ) then
       set tech=`cat qflow_vars.sh | grep techname | cut -d= -f2`
-      echo "Technology set to $tech from existing qflow_vars.sh file"
+      set has_tech=1
    else
       set tech=osu035
-      echo "No technology specified or found;  using default technology $tech"
+      set has_tech=-1
    endif
 endif
 
@@ -59,6 +60,7 @@ while ($#argv > 0)
       case --tech:
 	 shift
 	 set tech=$argv[1]
+	 set has_tech=0
 	 shift
 	 breaksw
       case -p:
@@ -150,6 +152,14 @@ if ($dohelp == 1 || $#argv != 0) then
    else
       exit 1
    endif
+endif
+
+if ($has_tech == 1) then
+   echo "Technology set to $tech from existing qflow_vars.sh file"
+else if ($has_tech == -1) then
+   echo "No technology specified or found;  using default technology $tech"
+else
+   echo "Technology set to $tech"
 endif
 
 source QFLOW_SCRIPT_DIR/checkdirs.sh ${tech} ${project}
