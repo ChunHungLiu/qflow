@@ -140,7 +140,7 @@ if ($makedef == 1) then
 
    if ( ${?via_pattern} ) then
       echo "" >> ${rootname}.cfg
-      echo "via_pattern ${via_pattern}" >> ${rootname}.cfg
+      echo "via pattern ${via_pattern}" >> ${rootname}.cfg
    endif
 
    if (! ${?via_stacks} ) then
@@ -148,7 +148,7 @@ if ($makedef == 1) then
    endif
 
    echo "" >> ${rootname}.cfg
-   echo "via_stacks ${via_stacks}" >> ${rootname}.cfg
+   echo "stack ${via_stacks}" >> ${rootname}.cfg
 
    # If there is a file called ${rootname}.cfg2, then append it to the
    # ${rootname}.cfg file
