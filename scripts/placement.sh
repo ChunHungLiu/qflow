@@ -119,6 +119,10 @@ if ( !( -f ${rootname}.pin || ( -M ${rootname}.pin < -M ${rootname}.cel ))) then
    exit 1
 endif
 
+if (! ${?via_stacks} ) then
+   set via_stacks = 2
+endif
+
 #---------------------------------------------------
 # 2) Prepare DEF and .cfg files for qrouter
 #---------------------------------------------------
@@ -126,10 +130,10 @@ endif
 if ($makedef == 1) then
    if ( "$techleffile" == "" ) then
       ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-                $fillcell ${techdir}/$leffile >>& ${synthlog}
+                $fillcell $via_stacks ${techdir}/$leffile >>& ${synthlog}
    else
       ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-		$fillcell ${techdir}/$techleffile \
+		$via_stacks $fillcell ${techdir}/$techleffile \
 		${techdir}/$leffile >>& ${synthlog}
    endif
 endif

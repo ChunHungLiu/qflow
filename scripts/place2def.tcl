@@ -10,11 +10,16 @@
 # fill cells instead of removing them.  It should be used when the
 # standard cell set defines a filler cell.  "twfeed" connections in
 # the .pin file are still ignored, as before.
+#
+# 9/15/2013 Update---added option to specify the stack number, which
+# can be pulled from the technology script or the user script, and
+# use of additional file ".cfg2", which is handled like the ".cel2"
+# file; that is, if it exists, it is appended to ".cfg".
 #---------------------------------------------------------------------------
 
 if {$argc < 3} {
    puts -nonewline stdout "Usage:  place2def <project_name> <qrouter_path> "
-   puts stdout "<fill_cell> <technology_lef> ..."
+   puts stdout "<fill_cell> [<stack>] <technology_lef> ..."
    exit 0
 }
 
@@ -31,6 +36,7 @@ set parname ${topname}.par
 set pinname ${topname}.pin
 set defname ${topname}.def
 set cfgname ${topname}.cfg
+set cfg2name ${topname}.cfg2
 set infoname ${topname}.info
 
 # Number of layers we want to use for routing is determined
@@ -41,9 +47,22 @@ if [catch {open $parname r} fpar] {
    return
 }
 
+set stacknum 2		;# Default allow up to 2 vias to stack
+
 set qrouter_path [lindex $argv 1]
 set fill_cell [lindex $argv 2]
-set leffiles [lrange $argv 3 end]
+
+# If the 4th argument is an integer, use that as the stack
+# number.  Otherwise, the LEF filenames start at the 4th
+# argument.
+
+set argv3 [lindex $argv 3]
+if [string is integer $argv3] {
+   set stacknum $argv3
+   set leffiles [lrange $argv 4 end]
+} else {
+   set leffiles [lrange $argv 3 end]
+}
 
 #-----------------------------------------------------------------
 # Pick up the number of routing layers to use by counting
@@ -119,11 +138,12 @@ puts $fcfg ""
 puts $fcfg "Num_layers  $numlayers"
 # NOTE:  Use the following to prevent via stacks that the
 # technology disallows.
-puts $fcfg "stack 2"
+puts $fcfg "stack ${stacknum}"
 puts $fcfg ""
 foreach leffile $leffiles {puts $fcfg "lef ${leffile}"}
 puts $fcfg ""
 flush $fcfg
+
 
 #-----------------------------------------------------------------
 # Read the .pl2 file and get the full die area (components only)
@@ -420,6 +440,15 @@ while {![catch {set yvals($i)}]} {
 #  puts $fcfg "obstruction $corexbot $y1 $corextop $y2 $metal1(name)"
 #  puts $fcfg "obstruction $corexbot $y4 $corextop $y3 $metal1(name)"
    incr i
+}
+
+# Append the ".cfg2" file, if one exists
+
+if {![catch {open $cfg2name r} fcfg2]} {
+   while {[gets $fcfg2 line] >= 0} {
+      puts $fcfg $line
+   }
+   close $fcfg2
 }
 
 close $fcfg

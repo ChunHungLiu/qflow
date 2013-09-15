@@ -1,10 +1,6 @@
 #!/bin/tcsh -f
 #----------------------------------------------------------
-# Route script using TimberWolf and qrouter
-#
-# This script assumes the existence of the pre-TimberWolf
-# ".cel" and ".par" files.  It will run place2def2 to
-# generate the DEF file, and qrouter for the detailed route.
+# Route script using qrouter
 #----------------------------------------------------------
 # Tim Edwards, 5/16/11, for Open Circuit Design
 # Modified April 2013 for use with qflow
