@@ -133,7 +133,7 @@ if ($makedef == 1) then
                 $fillcell $via_stacks ${techdir}/$leffile >>& ${synthlog}
    else
       ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-		$via_stacks $fillcell ${techdir}/$techleffile \
+		$fillcell $via_stacks ${techdir}/$techleffile \
 		${techdir}/$leffile >>& ${synthlog}
    endif
 endif
