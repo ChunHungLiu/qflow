@@ -1233,12 +1233,13 @@ main(int argc, char *argv[])
 	    case INPUTOUTPUT:
 	    case WIRE:
 	    case REGISTER:
-		fputs(token, ftmp);
 
 		if (!strcmp(token, ";")) {
+		    fputs(token, ftmp);
 		    popstack(&stack);
 		}
 		else if (!strcmp(token, ",")) {
+		    fputs(token, ftmp);
 		    fputs(" ", ftmp);
 		    // Retain both state and vector bounds
 		}
@@ -1246,6 +1247,7 @@ main(int argc, char *argv[])
 		    char *aptr, *cptr;
 		    int aval;
 
+		    fputs(token, ftmp);
 		    newtok = advancetoken(&filestack, ftmp, ']');
 		    paramcpy(token, newtok, params);	// Substitute parameters
 		    fputs(token, ftmp);
@@ -1283,6 +1285,7 @@ main(int argc, char *argv[])
 		    newvec = (vector *)malloc(sizeof(vector));
 
 		    if (stack->state == INPUTOUTPUT) {
+		        fputs(token, ftmp);
 		        newvec->next = topmod->iolist;
 		        topmod->iolist = newvec;
 		        if (DEBUG) printf("Adding new I/O signal \"%s\"\n", token);
@@ -1291,15 +1294,24 @@ main(int argc, char *argv[])
 			if (!strcmp(token, "=")) {
 			    // This is a statement "wire <name> = <assignment>"
 			    pushstack(&stack, ASSIGNMENT, stack->suspend);
+			    // Odin doesn't handle this syntax.  Break it into
+			    // two lines, "wire <name>;" and "assign <name> =
+			    // <assignment>".
+
+			    fputs(";\n   assign ", ftmp);
+			    fputs(topmod->wirelist->name, ftmp);
+			    fputs(" = ", ftmp);
 			    break;
 			}
 			else {
+			    fputs(token, ftmp);
 		            newvec->next = topmod->wirelist;
 		            topmod->wirelist = newvec;
 		            if (DEBUG) printf("Adding new wire \"%s\"\n", token);
 			}
 		    }
 		    else if (stack->state == REGISTER) {
+		        fputs(token, ftmp);
 		        newvec->next = topmod->reglist;
 		        topmod->reglist = newvec;
 		        if (DEBUG) printf("Adding new register \"%s\"\n", token);
