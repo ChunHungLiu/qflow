@@ -878,6 +878,7 @@ main(int argc, char *argv[])
     ifdefstack = NULL;
 
     /* Start the stack with a NOTHING entry */
+    stack = NULL;
     pushstack(&stack, NOTHING, 0);
 
     /* Read continuously and break loop when input is exhausted */
