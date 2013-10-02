@@ -1507,7 +1507,7 @@ main(int argc, char *argv[])
 		// block has been reached.
 
 		// We look for "always", "wire", "reg", and "assign".
-		// This is probably not a complete list.
+		// Anything else is assumed to be a subcircuit call.
 
 		else if (!strcmp(token, "always")) {
 		    while(stack->state != MBODY) popstack(&stack);
@@ -1528,6 +1528,12 @@ main(int argc, char *argv[])
 		else if (!strcmp(token, "assign")) {
 		    while(stack->state != MBODY) popstack(&stack);
 		    pushstack(&stack, ASSIGNMENT, stack->suspend);
+		}
+		else {
+		    while(stack->state != MBODY) popstack(&stack);
+		    if (subname == NULL) {
+			subname = strdup(token);
+		    }
 		}
 
 		if (stack->suspend <= 1) {
@@ -1578,13 +1584,11 @@ main(int argc, char *argv[])
 
 		    if (stack->state == IF_ELSE) popstack(&stack);
 
-		    else {
-			// If we're down to an ABODY, then remove it, too
-			if (stack->state == ABODY) popstack(&stack);
+		    // If we're down to an ABODY, then remove it, too
+		    // if (stack->state == ABODY) popstack(&stack);
 
-			// If we're down to an ALWAYS, then remove it, too
-			if (stack->state == ALWAYS) popstack(&stack);
-		    }
+		    // If we're down to an ALWAYS, then remove it, too
+		    // if (stack->state == ALWAYS) popstack(&stack);
 		}
 		else if ((stack->state == IF_ELSE) && (!strcmp(token, ";"))) {
 		    popstack(&stack);
