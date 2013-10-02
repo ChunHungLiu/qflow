@@ -1207,6 +1207,8 @@ main(int argc, char *argv[])
 		    // NOTE:  Need to handle parameter passing notation here!
 		    else if (!strcmp(token, "(")) {
 			pushstack(&stack, SUBCIRCUIT, stack->suspend);
+		        if (DEBUG) printf("Found module dependency \"%s\""
+				" in source\n", subname);
 
 			// Dependencies list is for files other than this one.
 			// So check module list to see if this module is known
@@ -1576,11 +1578,13 @@ main(int argc, char *argv[])
 
 		    if (stack->state == IF_ELSE) popstack(&stack);
 
-		    // If we're down to an ABODY, then remove it, too
-		    // if (stack->state == ABODY) popstack(&stack);
+		    else {
+			// If we're down to an ABODY, then remove it, too
+			if (stack->state == ABODY) popstack(&stack);
 
-		    // If we're down to an ALWAYS, then remove it, too
-		    // if (stack->state == ALWAYS) popstack(&stack);
+			// If we're down to an ALWAYS, then remove it, too
+			if (stack->state == ALWAYS) popstack(&stack);
+		    }
 		}
 		else if ((stack->state == IF_ELSE) && (!strcmp(token, ";"))) {
 		    popstack(&stack);
