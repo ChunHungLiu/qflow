@@ -1772,12 +1772,18 @@ main(int argc, char *argv[])
 		    // pick up RHS 
 		    if ((ival = get_bitval(token)) != -1) {
 			// Generate reset name in init file
-			// TO-DO:  Handle negedge types by adding inverted signal
-			// For now, we assume posedge
 
-			if ((condition == EQUAL && ival == 1) ||
-				  (condition == NOT_EQUAL && ival == 0)) {
-			     fprintf(finit, "%s\n", testreset->name);
+			if (edgetype == POSEDGE) {
+			    if ((condition == EQUAL && ival == 1) ||
+					(condition == NOT_EQUAL && ival == 0)) {
+				fprintf(finit, "%s\n", testreset->name);
+			    }
+		 	}
+			else {
+			    if ((condition == EQUAL && ival == 0) ||
+					(condition == NOT_EQUAL && ival == 1)) {
+		 		fprintf(finit, "~%s\n", testreset->name);
+			    }
 			}
 		    }
 		}
