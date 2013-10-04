@@ -750,6 +750,49 @@ paramcpy(char *dest, char *source, parameter *params)
 }
 
 /*------------------------------------------------------*/
+/* write_signal --					*/
+/*							*/
+/*	Generate an output line for the .clk or .init	*/
+/*	file for the indicated signal, which is either	*/
+/*	a reset or a clock.  The output includes the	*/
+/*	reset or clock signal name, and then "input	*/
+/*	wire", "internal wire", or "internal register",	*/
+/*	depending on how the signal is defined.		*/
+/*------------------------------------------------------*/
+
+void
+write_signal(module *topmod, sigact *outsig, FILE *fout, char edgetype)
+{
+    vector *testvec;
+
+    for (testvec = topmod->iolist; testvec; testvec = testvec->next)
+	if (!strcmp(testvec->name, outsig->name))
+	     break;
+
+    if (testvec != NULL)
+	fprintf(fout, "%s%s input wire\n",
+			(edgetype == NEGEDGE) ? "~" : "",
+			outsig->name);
+    else {
+	for (testvec = topmod->wirelist; testvec; testvec = testvec->next)
+	    if (!strcmp(testvec->name, outsig->name))
+	        break;
+
+	if (testvec != NULL)
+	    fprintf(fout, "%s%s internal wire\n",
+			(edgetype == NEGEDGE) ? "~" : "",
+			outsig->name);
+	else
+	    fprintf(fout, "%s%s internal register\n",
+			(edgetype == NEGEDGE) ? "~" : "",
+			outsig->name);
+    }
+    if (DEBUG)
+	if (edgetype == 0)
+	    printf("Adding clock signal \"%s\"\n", outsig->name);
+}
+
+/*------------------------------------------------------*/
 /* Stack pushing/popping routines.			*/
 /*------------------------------------------------------*/
 
@@ -1418,27 +1461,7 @@ main(int argc, char *argv[])
 			    // output list it will be called an input;  this
 			    // is okay for our purpose (see vmunge.c).
 
-			    for (testvec = topmod->iolist; testvec;
-						testvec = testvec->next)
-				if (!strcmp(testvec->name, clocksig->name))
-				     break;
-
-			    if (testvec != NULL)
-				fprintf(fclk, "%s input wire\n", clocksig->name);
-			    else {
-				for (testvec = topmod->wirelist; testvec;
-						testvec = testvec->next)
-				    if (!strcmp(testvec->name, clocksig->name))
-				        break;
-
-				if (testvec != NULL)
-				    fprintf(fclk, "%s internal wire\n",
-						clocksig->name);
-				else
-				    fprintf(fclk, "%s internal register\n",
-						clocksig->name);
-			    }
-		            if (DEBUG) printf("Adding clock signal \"%s\"\n", token);
+			    write_signal(topmod, clocksig, fclk, (char)0);
 		        }
 		        else {
 			    sigact *resetsig = (sigact *)malloc(sizeof(sigact));
@@ -1717,7 +1740,7 @@ main(int argc, char *argv[])
 					"condition checked is positive.\n",
 					filestack->filename, filestack->currentLine);
 			    }
-			    fprintf(finit, "%s\n", testreset->name);
+			    write_signal(topmod, testreset, finit, (char)POSEDGE);
 			}
 			else if (condition == NOT) {
 			    if (edgetype == POSEDGE) {
@@ -1726,7 +1749,7 @@ main(int argc, char *argv[])
 					"condition checked is negative.\n",
 					filestack->filename, filestack->currentLine);
 			    }
-			    fprintf(finit, "~%s\n", testreset->name);
+			    write_signal(topmod, testreset, finit, (char)NEGEDGE);
 			}
 		    }
 		    popstack(&stack);
@@ -1776,13 +1799,13 @@ main(int argc, char *argv[])
 			if (edgetype == POSEDGE) {
 			    if ((condition == EQUAL && ival == 1) ||
 					(condition == NOT_EQUAL && ival == 0)) {
-				fprintf(finit, "%s\n", testreset->name);
+			        write_signal(topmod, testreset, finit, (char)POSEDGE);
 			    }
 		 	}
 			else {
 			    if ((condition == EQUAL && ival == 0) ||
 					(condition == NOT_EQUAL && ival == 1)) {
-		 		fprintf(finit, "~%s\n", testreset->name);
+			        write_signal(topmod, testreset, finit, (char)NEGEDGE);
 			    }
 			}
 		    }

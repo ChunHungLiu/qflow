@@ -137,8 +137,10 @@ main(int argc, char *argv[])
 
 		case IO_SIGNAL:
 		    // Hack to go along with vmunge.tcl. . .
-		    if (strncmp(token, "xloopback_", 10))
+		    if (strncmp(token, "xloopback_", 10) &&
+				strncmp(token, "xreset_out_", 11))
 			fprintf(stdout, "\n\t\"%s\" : \"%s\"", token, token);
+
 		    break;
 
 		case LATCH:
@@ -177,6 +179,8 @@ main(int argc, char *argv[])
 			// Hack to go along with vmunge.tcl. . .
 			if (!strncmp(eptr + 1, "xloopback_out_", 14))
 			    fprintf(stdout, "\t\"%s\" : \"%s\";\n", token, eptr + 15);
+			else if (!strncmp(eptr + 1, "xreset_out_", 11))
+			    fprintf(stdout, "\t\"%s\" : \"%s\";\n", token, eptr + 12);
 			else
 			    fprintf(stdout, "\t\"%s\" : \"%s\";\n", token, eptr + 1);
 			*eptr = '=';

@@ -72,19 +72,15 @@ while {[gets $vfd line] >= 0} {
 #-------------------------------------------------------------
 
 set resetlist {}
-
-if {[gets $inet line] >= 0} {
-   set resetnet $line
-   set resetnet [string map {! not_ ~ not_} $resetnet]
-   lappend resetlist $resetnet
-}
-
 set flopsigs {}
 set floptypes {}
 set flopresetnet {}
 
 while {[gets $inet line] >= 0} {
-   if [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
+   if [regexp {^([^ \t]+)[ \t]+[^ \t]+[ \t]+[^ \t]+} $line lmatch resetnet] {
+      set resetnet [string map {! not_ ~ not_} $resetnet]
+      lappend resetlist $resetnet
+   } elseif [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
       lappend flopsigs ${signal}_FF_NODE
       lappend floptypes $initcond
       lappend flopresetnet $resetnet
