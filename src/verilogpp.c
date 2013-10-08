@@ -1231,6 +1231,11 @@ main(int argc, char *argv[])
 		    clocksig = NULL;
 		    condition = UNKNOWN;
 		    initvec = NULL;
+		    // Clear any subcircuit references
+		    if (subname != NULL) {
+			free(subname);
+			subname = NULL;
+		    }
 		}
 		else if (!strcmp(token, "endmodule")) {
 		    if (DEBUG) printf("End of module \"%s\" found.\n", topmod->name);
@@ -1539,6 +1544,10 @@ main(int argc, char *argv[])
 		    clocksig = NULL;
 		    condition = UNKNOWN;
 		    initvec = NULL;
+		    if (subname != NULL) {
+			free(subname);
+			subname = NULL;
+		    }
 		}
 		else if (!strcmp(token, "wire")) {
 		    while(stack->state != MBODY) popstack(&stack);

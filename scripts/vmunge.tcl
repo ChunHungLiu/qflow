@@ -123,21 +123,23 @@ while {[gets $vnet line] >= 0} {
     if {$inmodule == 1} {
 
 	if [regexp {\(} $line lmatch] {
-	    foreach clock $intclocks {
+	    foreach clock [lsort -unique $intclocks] {
 		puts $vtmp "\txloopback_in_$clock,"
 		puts $vtmp "\txloopback_out_$clock,"
 	    }
-	    foreach reset $intresets {
-		puts $vtmp "\txreset_out_$reset,"
+	    foreach reset [lsort -unique $intresets] {
+		set absreset [string map {~ ""} $reset]
+		puts $vtmp "\txreset_out_$absreset,"
 	    }
 	} elseif [regexp {;} $line lmatch] {
 	    puts $vtmp ""
-	    foreach clock $intclocks {
+	    foreach clock [lsort -unique $intclocks] {
 		puts $vtmp "   input\txloopback_in_$clock;"
 		puts $vtmp "   output\txloopback_out_$clock;"
 	    }
-	    foreach reset $intresets {
-		puts $vtmp "   output\txreset_out_$reset;"
+	    foreach reset [lsort -unique $intresets] {
+		set absreset [string map {~ ""} $reset]
+		puts $vtmp "   output\txreset_out_$absreset;"
 	    }
 	    break;
 	}
