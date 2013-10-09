@@ -33,6 +33,8 @@ PATH: /sbin
 PATH: /usr/bin
 PATH: /usr/sbin
 PATH: /usr/local/bin
+PATH: /home/tim/src/timberwolf-6.3/bin
+PATH: /home/tim/src/timberwolf-6.3/bin
 
 
 ## ----------- ##

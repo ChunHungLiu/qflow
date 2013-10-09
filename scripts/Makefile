@@ -14,7 +14,7 @@ QFLOW_BIN_DIR = /usr/local/bin
 
 DEFAULTPARSER = @QFLOW_DEFAULT_PARSER@
 
-TCL_SCRIPTS = bdnet2cel.tcl clocktree.tcl place2def.tcl place2lef2.tcl
+TCL_SCRIPTS = blif2cel.tcl clocktree.tcl place2def.tcl place2lef2.tcl
 TCL_SCRIPTS += place2net2.tcl postproc.tcl setreset.tcl vmunge.tcl
 TCL_SCRIPTS += addspacers.tcl vispreproc.tcl outputprep.tcl
 SHELL_SCRIPTS = placement.sh router.sh synthesize.sh

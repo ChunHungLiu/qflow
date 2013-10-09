@@ -1,15 +1,15 @@
 /*
  *---------------------------------------------------------------------------
- * BDnetFanout bdnet_input [bdnet_output]
+ * blifFanout blif_input [blif_output]
  *
- * BDnetFanout[.c] parses a BDNET gatelist (typically, but not necessarily,
+ * blifFanout[.c] parses a .blif netlist (typically, but not necessarily,
  * from synthesized verilog).  The fanout is analyzed, and fanout of each gate
  * is counted.  A value to parameterize the driving cell will be output.
  * Eventually, a critical path can be identified, and the gates sized to
  * improve it.
  *
  * Original:  fanout.c by Steve Beccue
- * New: BDnetFanout.c by Tim Edwards.
+ * New: blifFanout.c by Tim Edwards.
  *     changes: 1) Input and output format changed from RTL verilog to BDNET
  *		 for compatibility with the existing digital design flow.
  *	        2) Gate format changed to facilitate entering IBM data
@@ -20,6 +20,9 @@
  *	technology used with this tool.  Instead, the format of the naming
  *	convention is passed to the tool using "-s <separator>", and parsing
  *	the remaining name for unique identifiers.
+ *
+ * Update 10/8/2013:
+ *	Changed input file format from BDNET to BLIF
  *---------------------------------------------------------------------------
  *
  * Revision 1.3  2008/09/09 21:24:30  steve_beccue
@@ -110,8 +113,7 @@ struct Nodelist {
 
 struct Nodelist *Nodel;
 
-enum states_ {NONE, OUTPUTS, GATENAME, GATETYPE, PINNAME, INPUTNODE,
-		OUTPUTNODE, ENDMODEL};
+enum states_ {NONE, OUTPUTS, GATENAME, PINNAME, INPUTNODE, OUTPUTNODE, ENDMODEL};
 enum nodetype_ {INPUT, OUTPUT, OUTPUTPIN, UNKNOWN};
 
 void read_gate_file(char *gate_file_name);
@@ -241,7 +243,7 @@ int main (int argc, char *argv[])
    if (i < argc) {
       strcpy(Inputfname, argv[i]);
       if (!(infptr = fopen(Inputfname, "r"))) {
-	  fprintf(stderr, "BDnetFanout: Couldn't open %s for reading.\n", Inputfname);
+	  fprintf(stderr, "blifFanout: Couldn't open %s for reading.\n", Inputfname);
 	  exit(-1);
       }
    }
@@ -249,7 +251,7 @@ int main (int argc, char *argv[])
    if (i < argc) {
       strcpy(Outputfname, argv[i]);
       if (!(outfptr = fopen(Outputfname, "w"))) {
-	 fprintf(stderr, "BDnetFanout: Couldn't open %s for writing.\n", Outputfname);
+	 fprintf(stderr, "blifFanout: Couldn't open %s for writing.\n", Outputfname);
 	 exit(-1);
       }
    }
@@ -275,20 +277,20 @@ int main (int argc, char *argv[])
    }
 
    if (GateCount == 0) {
-      fprintf(stderr, "BDnetFanout:  No gates found in %s file!\n", Gatepath);
+      fprintf(stderr, "blifFanout:  No gates found in %s file!\n", Gatepath);
       exit(-1);
    }
 
    if (GatePrintFlag) showgatelist();    // then exit
 
    if (Buffername == NULL || buf_in_pin == NULL || buf_out_pin == NULL) {
-      fprintf(stderr, "BDnetFanout:  Need name of buffer cell, and input/output pins.\n");
+      fprintf(stderr, "blifFanout:  Need name of buffer cell, and input/output pins.\n");
       exit(-1);
    }
 
    state = NONE;
    while ((s = fgets(line, MAXLINE, infptr)) != NULL) {
-      t = strtok(s, " \t\":;\n");
+      t = strtok(s, " \t=\\\n");
       while (t) {
 	 switch (state) {
 	    case GATENAME:
@@ -298,35 +300,26 @@ int main (int argc, char *argv[])
 		     gateinputs = gl->num_inputs;
 		     Input_node_num = 0;
 		     strcpy(Gatename, t);
-		     state = GATETYPE;
+		     state = PINNAME;
 		  }
 	       }
 	       break;
 
 	    case OUTPUTS:
-	       if (!strcmp(t, "INSTANCE"))
+	       if (!strcmp(t, ".gate"))
 		  state = GATENAME;
-	       else {
-		  /* Skip to 2nd entry (node name) */
-		  t = strtok(NULL, " \t\":;\n");
-		  if (t) {
-	             if (VerboseFlag) printf("\nOutput pin %s", t);
-	             strcpy(Nodename, t);
-	             registernode(Nodename, OUTPUTPIN);
-		  }
+	       else if (t) {
+	          if (VerboseFlag) printf("\nOutput pin %s", t);
+	          strcpy(Nodename, t);
+	          registernode(Nodename, OUTPUTPIN);
 	       }
 	       break;
 
-	    case GATETYPE:
-	       if (strcmp(t, "physical"))
-		  fprintf(stderr, "Warning: not a physical gate?\n");
-	       state = PINNAME;	// Assumes all gates have at least 1 input!
-	       break;
-
 	    case PINNAME:
-	       if (!strcmp(t, "INSTANCE")) state = GATENAME;  // new gate
+	       if (!strcmp(t, ".gate")) state = GATENAME;  // new gate
+	       else if (!strcmp(t, ".end")) state = ENDMODEL;  // last gate
 	       else if (Input_node_num == gateinputs) state = OUTPUTNODE;
-	       else state = INPUTNODE; // We ignore the pin names
+	       else state = INPUTNODE;
 	       break;
 
 	    case INPUTNODE:
@@ -345,11 +338,11 @@ int main (int argc, char *argv[])
 	       break;
 
 	    default:
-	       if (!strcmp(t, "INSTANCE")) state = GATENAME;
-	       else if (!strcmp(t, "OUTPUT")) state = OUTPUTS;
+	       if (!strcmp(t, ".gate")) state = GATENAME;
+	       else if (!strcmp(t, ".outputs")) state = OUTPUTS;
 	       break;
 	 }
-	 t = strtok(NULL, " \t\":;\n");
+	 t = strtok(NULL, " \t=\\\n");
       }
    }
 
@@ -449,11 +442,11 @@ void read_ignore_file(char *ignore_file_name)
    char *s, *sp;
 
    if (!(ignorefptr = fopen(ignore_file_name, "r"))) {
-      fprintf(stderr, "BDnetFanout:  Couldn't open %s as ignore file.\n",
+      fprintf(stderr, "blifFanout:  Couldn't open %s as ignore file.\n",
 		ignore_file_name);
       fflush(stderr);
       return;
-      // This is only a warning.  It will not stop executaion of BDnetFanout
+      // This is only a warning.  It will not stop executaion of blifFanout
    }
 
    while ((s = fgets(line, MAXLINE, ignorefptr)) != NULL) {
@@ -505,7 +498,7 @@ void read_gate_file(char *gate_file_name)
    gl = Gatel;
 
    if (!(gatefptr = fopen(gate_file_name, "r"))) {
-      fprintf(stderr, "BDnetFanout:  Couldn't open %s as gate file. exiting.\n",
+      fprintf(stderr, "blifFanout:  Couldn't open %s as gate file. exiting.\n",
 		 gate_file_name);
       fflush(stderr);
       exit(-2);
@@ -758,7 +751,7 @@ void write_output(FILE *infptr, FILE *outfptr)
    gateline[0] = '\0';
    while ((s = fgets(line, MAXLINE, infptr)) != NULL) {
       strcpy(inputline, s);		// save this for later
-      t = strtok(s, " \t\":;\n");
+      t = strtok(s, " \t=\\\n");
       while (t) { 
 	 switch (state) {
 	    case GATENAME:
@@ -768,18 +761,14 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     Input_node_num = 0;
 		     needscorrecting = 0;
 		     strcpy(Gatename, t);
-		     state = GATETYPE;
+		     state = PINNAME;
 		  }
 	       }
 	       break;
 	  
-	    case GATETYPE:
-	       state = PINNAME;	// Assumes all gates have at least 1 input!
-	       break;
-
 	    case PINNAME:
-	       if (!strcmp(t, "INSTANCE")) state = GATENAME;  // new gate
-	       else if (!strcmp(t, "ENDMODEL")) state = ENDMODEL;  // last gate
+	       if (!strcmp(t, ".gate")) state = GATENAME;  // new gate
+	       else if (!strcmp(t, ".end")) state = ENDMODEL;  // last gate
 	       else if (Input_node_num == gateinputs) state = OUTPUTNODE;
 	       else state = INPUTNODE; // We ignore the pin names
 	       break;
@@ -794,7 +783,6 @@ void write_output(FILE *infptr, FILE *outfptr)
 	    case OUTPUTNODE:
 	       if (VerboseFlag) printf("\nOutput node %s", t);
 	       strcpy(Nodename, t);
-	       state = PINNAME;
 
 	       for (nl = Nodel; nl->next ; nl = nl->next) {
 		  if (!strcmp(Nodename, nl->nodename)) {
@@ -813,7 +801,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     if ((nl->ignore == FALSE) && (nl->is_outputpin == TRUE)) {
 		        orig = find_size(Gatename);
 			stren = best_size(Gatename, nl->total_load + MaxOutputCap
-				+ WireCap, NULL);
+					+ WireCap, NULL);
 			if (strcmp(stren, Gatename)) {
 			   needscorrecting = TRUE;
 			   if (VerboseFlag)
@@ -823,14 +811,15 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     }
 		  }
 	       }
+	       state = PINNAME;
 	       break;
 
 	    default:
-	       if (!strcmp(t, "INSTANCE"))
+	       if (!strcmp(t, ".gate"))
 		  state = GATENAME;
 	       break;
 	 }
-         t = strtok(NULL, " \t\":;\n");
+         t = strtok(NULL, " \t=\\\n");
 
          if (state == GATENAME || state == ENDMODEL) {
 
@@ -843,7 +832,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		  if (VerboseFlag)
 	             printf("\nInsert buffers %s - %g\n", s, inv_size);
 	          s = strstr(gateline, Nodename);	// get output node
-	          s = strtok(s, " \t\";");		// strip it clean
+	          s = strtok(s, " \t\\");		// strip it clean
 		  if (*s == '[') {
 		     char *p = strchr(s, ']');
 		     if (p != NULL)
@@ -899,9 +888,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		  stren = best_size(Gatename, nl->total_load + WireCap, NULL);
 
 		  sprintf(bufferline, 
-			"\nINSTANCE \"%s\":\"physical\"\n"
-			"\"%s\"\t:\t\"%s"
-			"\"%s\"\t:\t\"%s\";\n\n",
+			".gate %s %s=%s %s=%s\n",
 			cbest, buf_in_pin, s, buf_out_pin, Nodename);
 	       }
 	       if (stren != NULL && strcmp(Gatename, stren) != 0) {
@@ -1016,7 +1003,7 @@ char *best_size(char *gatename, double amount, char *overload)
 {
    char *s, *stren;
    int ind;
-   double amax = 10000.0;	// Assuming no gate is this big!
+   double amax = 1.0E10;		// Assuming no gate is this big!
    double gmax = 0.0;
    struct Gatelist *gl, *glsave = NULL;
 
@@ -1042,7 +1029,7 @@ char *best_size(char *gatename, double amount, char *overload)
       }
    }
 
-   if (amax == 10000.0) {
+   if (amax == 1.0E10) {
       stren_err_counter++;
       if (overload) *overload = TRUE;
       if (glsave != NULL)
@@ -1064,14 +1051,14 @@ char *best_size(char *gatename, double amount, char *overload)
 
 void helpmessage(void)
 {
-   printf("\nBDnetFanout:\n\n");
-   printf("BDnetFanout looks at vis/sis synthesized BDNET netlists.\n");
+   printf("\nblifFanout:\n\n");
+   printf("blifFanout looks at a synthesized BLIF netlist.\n");
    printf("Node fanout is measured, and gate size is adjusted.\n");
    printf("File \"gate.cfg\" is used to describe the RTL gates.\n\n");
 
-   printf("\tUsage: BDnetFanout [-switches] bdnet_in [bdnet_out].\n\n");
+   printf("\tUsage: blifFanout [-switches] blif_in [blif_out].\n\n");
 
-   printf("BDnetFanout returns the number of gate substitutions made.\n");
+   printf("blifFanout returns the number of gate substitutions made.\n");
    printf("Typically, it will be iterated until convergence (return value 0).\n\n");
     
    printf("valid switches are:\n");
@@ -1093,4 +1080,4 @@ void helpmessage(void)
    exit(-3);
 }
 
-/* end of BDnetFanout.c */
+/* end of blifFanout.c */

@@ -16,8 +16,8 @@ QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
 QFLOW_ODIN_PATH = @QFLOW_ODIN_PATH@
 QFLOW_MAGIC_PATH = @QFLOW_MAGIC_PATH@
 
-OBJECTS = AddIO2BDnet.o BDnet2BSpice.o BDnet2Verilog.o CleanUpBDnet.o BDnetFanout.o
-OBJECTS += verilogpp.o dcombine.o vsplit.o blifrtl2bdnet.o liberty2tech.o
+OBJECTS = AddIO2blif.o blif2BSpice.o blif2Verilog.o blifFanout.o
+OBJECTS += verilogpp.o dcombine.o liberty2tech.o
 SOURCES := $(patsubst %.o,%.c,$(OBJECTS))
 TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
 
@@ -25,29 +25,23 @@ BININSTALL = ${QFLOW_LIB_DIR}/bin
 
 all: $(TARGETS)
 
-AddIO2BDnet$(EXEEXT): AddIO2BDnet.o
-	$(CC) $(LDFLAGS) AddIO2BDnet.o -o $@ $(LIBS)
+AddIO2blif$(EXEEXT): AddIO2blif.o
+	$(CC) $(LDFLAGS) AddIO2blif.o -o $@ $(LIBS)
 
-BDnet2BSpice$(EXEEXT): BDnet2BSpice.o
-	$(CC) $(LDFLAGS) BDnet2BSpice.o -o $@ $(LIBS)
+blif2BSpice$(EXEEXT): blif2BSpice.o
+	$(CC) $(LDFLAGS) blif2BSpice.o -o $@ $(LIBS)
 
-BDnet2Verilog$(EXEEXT): BDnet2Verilog.o
-	$(CC) $(LDFLAGS) BDnet2Verilog.o -o $@ $(LIBS)
+blifFanout$(EXEEXT): blifFanout.o
+	$(CC) $(LDFLAGS) blifFanout.o -o $@ $(LIBS)
 
-CleanUpBDnet$(EXEEXT): CleanUpBDnet.o
-	$(CC) $(LDFLAGS) CleanUpBDnet.o -o $@ $(LIBS)
+blif2Verilog$(EXEEXT): blif2Verilog.o
+	$(CC) $(LDFLAGS) blif2Verilog.o -o $@ $(LIBS)
 
 verilogpp$(EXEEXT): verilogpp.o
 	$(CC) $(LDFLAGS) verilogpp.o -o $@ $(LIBS)
 
 dcombine$(EXEEXT): dcombine.o
 	$(CC) $(LDFLAGS) dcombine.o -o $@ $(LIBS)
-
-vsplit$(EXEEXT): vsplit.o
-	$(CC) $(LDFLAGS) vsplit.o -o $@ $(LIBS)
-
-blifrtl2bdnet$(EXEEXT): blifrtl2bdnet.o
-	$(CC) $(LDFLAGS) blifrtl2bdnet.o -o $@ $(LIBS)
 
 liberty2tech$(EXEEXT): liberty2tech.o
 	$(CC) $(LDFLAGS) liberty2tech.o -o $@ $(LIBS)

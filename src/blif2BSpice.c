@@ -1,10 +1,12 @@
 //--------------------------------------------------------------
-// BDnet2BSpice
+// blif2BSpice
 //
 // Revision 0, 2006-11-11: First release by R. Timothy Edwards.
 // Revision 1, 2009-07-13: Minor cleanups by Philipp Klaus Krause.
 // Revision 2, 2013-05-10: Modified to take a library of subcell
 //		definitions to use for determining port order.
+// Revision 3, 2013-10-09: Changed from BDnet2BSpice to
+//		blif2BSpice
 //
 //--------------------------------------------------------------
 
@@ -36,7 +38,7 @@ extern	char	*optarg;
 void ReadNetlistAndConvert(FILE *, FILE *, FILE *, char *, char *, char *);
 void CleanupString(char text[]);
 float getnumber(char *strpntbegin);
-int loc_getline( char s[], int lim, FILE *fp);
+int loc_getline(char s[], int lim, FILE *fp);
 void helpmessage();
 
 //--------------------------------------------------------
@@ -62,26 +64,26 @@ typedef struct _subcircuit {
 
 //--------------------------------------------------------
 
-int main ( int argc, char *argv[])
+int main (int argc, char *argv[])
 {
-	FILE *NET1, *NET2 = NULL, *OUT;
-	struct Resistor *ResistorData;
-	int i,AllMatched,NetsEqual;
+    FILE *NET1, *NET2 = NULL, *outfile;
+    struct Resistor *ResistorData;
+    int i, AllMatched, NetsEqual;
 
-	char Net1name[LengthOfNodeName];
-	char Net2name[LengthOfNodeName];
+    char Net1name[LengthOfNodeName];
+    char Net2name[LengthOfNodeName];
 
-	char *vddnet = NULL;
-	char *gndnet = NULL;
-	char *subnet = NULL;
+    char *vddnet = NULL;
+    char *gndnet = NULL;
+    char *subnet = NULL;
 
-	Net2name[0] = '\0';
+    Net2name[0] = '\0';
 
-	// Use implicit power if power and ground nodes are global in SPICE
-	// Otherwise, use "-p".
+    // Use implicit power if power and ground nodes are global in SPICE
+    // Otherwise, use "-p".
 
-        while( (i = getopt( argc, argv, "hHl:p:g:s:" )) != EOF ) {
-	   switch( i ) {
+    while ((i = getopt( argc, argv, "hHl:p:g:s:" )) != EOF) {
+	switch (i) {
 	   case 'p':
 	       vddnet = strdup(optarg);
 	       break;
@@ -99,36 +101,36 @@ int main ( int argc, char *argv[])
 	       helpmessage();
 	       break;
 	   default:
-	       fprintf(stderr,"\nbad switch %d\n", i );
+	       fprintf(stderr, "\nbad switch %d\n", i);
 	       helpmessage();
 	       break;
-	   }
-        }
+	}
+    }
 
-        if( optind < argc )	{
-           strcpy(Net1name,argv[optind]);
-	   optind++;
-	}
-	else	{
-	   fprintf(stderr,"Couldn't find a filename as input\n");
-	   exit(EXIT_FAILURE);
-	}
-        optind++;
-	NET1=fopen(Net1name,"r");
-	if (NET1 == NULL ) {
-		fprintf(stderr,"Couldn't open %s for reading\n",Net1name);
-		exit(EXIT_FAILURE);
-	}
+    if (optind < argc) {
+        strcpy(Net1name, argv[optind]);
+	optind++;
+    }
+    else {
+	fprintf(stderr, "Couldn't find a filename as input\n");
+	exit(EXIT_FAILURE);
+    }
+    optind++;
+    NET1 = fopen(Net1name,"r");
+    if (NET1 == NULL) {
+	fprintf(stderr,"Couldn't open %s for reading\n",Net1name);
+	exit(EXIT_FAILURE);
+    }
 
-	if (Net2name[0] != '\0') {
-	    NET2 = fopen(Net2name, "r");
-	    if (NET2 == NULL)
-		fprintf(stderr, "Couldn't open %s for reading\n", Net2name);
-	}
+    if (Net2name[0] != '\0') {
+	NET2 = fopen(Net2name, "r");
+	if (NET2 == NULL)
+	    fprintf(stderr, "Couldn't open %s for reading\n", Net2name);
+    }
 
-	OUT=stdout;
-	ReadNetlistAndConvert(NET1, NET2, OUT, vddnet, gndnet, subnet);
-        return 0;
+    outfile = stdout;
+    ReadNetlistAndConvert(NET1, NET2, outfile, vddnet, gndnet, subnet);
+    return 0;
 }
 
 /*--------------------------------------------------------------*/
@@ -139,19 +141,16 @@ int main ( int argc, char *argv[])
    SIDE EFFECTS: 
 \*--------------------------------------------------------------*/
 
-void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT, 
+void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile, 
 		char *vddnet, char *gndnet, char *subnet)
 {
 	int i,Found,NumberOfInputs,NumberOfOutputs,NumberOfInstances;
 
 	float length, width, Value;
 
-	char *node2pnt,*lengthpnt,*widthpnt,*FirstblankafterNode2;
+	char *node2pnt,*lengthpnt,*widthpnt,*FirstblankafterNode2, *lptr;
         char line[LengthOfLine];
-	char InputName[LengthOfNodeName],InputEquivalent[LengthOfNodeName];
-	char OutputName[LengthOfNodeName],OutputEquivalent[LengthOfNodeName];
-	char InputNodes[MaxNumberOfInputs][2][LengthOfNodeName];
-	char OutputNodes[MaxNumberOfOutputs][2][LengthOfNodeName];
+	char InputName[LengthOfNodeName], OutputName[LengthOfNodeName];
         char MainSubcktName[LengthOfNodeName],node1[LengthOfNodeName];
 	char InstanceName[LengthOfNodeName],InstancePortName[LengthOfNodeName];
 	char InstancePortWire[LengthOfNodeName];
@@ -227,7 +226,7 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT,
 		      /* tell what the standard cell set is going to	*/
 		      /* use for power bus names.  It's okay to fill in	*/
 		      /* signals with similar names here, as they will	*/
-		      /* (should!) match up to port names in the BDNET	*/
+		      /* (should!) match up to port names in the BLIF	*/
 		      /* file, and will be overwritten later.  Well	*/
 		      /* connections are not considered here, but maybe	*/
 		      /* they should be?				*/
@@ -268,75 +267,91 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT,
 
 	/* Read in line by line */
 
-	NumberOfInstances=0;
-        while(loc_getline(line, sizeof(line), NETFILE)>0 ) {
-	   if(strstr(line,"MODEL") != NULL ) {
-              if(sscanf(line,"MODEL %s",MainSubcktName)==1) {
+	NumberOfInstances = 0;
+        while (loc_getline(line, sizeof(line), netfile) > 0 ) {
+	   if (strstr(line, ".model") != NULL ) {
+              if (sscanf(line, ".model %s", MainSubcktName) == 1) {
 	         CleanupString(MainSubcktName);
-		 fprintf(OUT, "*SPICE netlist created from BDNET module "
-			"%s by BDnet2BSpice\n", MainSubcktName);
-		 fprintf(OUT,"");
+		 fprintf(outfile, "*SPICE netlist created from BLIF module "
+			"%s by blif2BSpice\n", MainSubcktName);
+		 fprintf(outfile, "");
 
 		 if (subcktlib != NULL) {
 		    /* Write out the subcircuit library file verbatim */
 		    rewind(libfile);
 		    while (loc_getline(line, sizeof(line), libfile) > 0)
-		       fputs(line, OUT);
+		       fputs(line, outfile);
 		    fclose(libfile);
-		    fprintf(OUT,"");
+		    fprintf(outfile, "");
 		 }
 
-	         fprintf(OUT,".subckt %s ",MainSubcktName);
+	         fprintf(outfile, ".subckt %s ", MainSubcktName);
 	         if (vddnet == NULL)
-		    fprintf(OUT,"vdd ");
+		    fprintf(outfile, "vdd ");
 		 else
-		    fprintf(OUT,"%s ", vddnet);
+		    fprintf(outfile, "%s ", vddnet);
 
 	         if (gndnet == NULL)
-		    fprintf(OUT,"vss ");
+		    fprintf(outfile, "vss ");
 		 else
-		    fprintf(OUT,"%s ", gndnet);
+		    fprintf(outfile, "%s ", gndnet);
 
 		 if ((subnet != NULL) && strcasecmp(subnet, gndnet))
-		    fprintf(OUT,"%s ", subnet);
+		    fprintf(outfile, "%s ", subnet);
 	      }
-	      else if(strstr(line,"ENDMODEL") != NULL) {
-                 fprintf(OUT,".ends %s\n ",MainSubcktName);
+	      else if (strstr(line, ".ends") != NULL) {
+                 fprintf(outfile, ".ends %s\n ", MainSubcktName);
               }
 	   }
-	   if(strstr(line,"INPUT") != NULL ) {
-	      NumberOfInputs=0;
-	      while(loc_getline(line, sizeof(line), NETFILE)>1 ) {
-                 if(sscanf(line,"%s :  %s",InputName,InputEquivalent)==2) {
+	   if (strstr(line, ".inputs") != NULL) {
+	      NumberOfInputs = 0;
+	      lptr = line;
+	      while (!isspace(*lptr)) lptr++;
+	      while (isspace(*lptr)) lptr++;
+	      while (1) {
+		 if (strstr(lptr, ".outputs")) break;
+                 while (sscanf(lptr, "%s", InputName) == 1) {
 	            CleanupString(InputName);
-	            CleanupString(InputEquivalent);
-	            strcpy(InputNodes[NumberOfInputs][0],InputName);
-	            strcpy(InputNodes[NumberOfInputs][1],InputEquivalent);
-	            fprintf(OUT,"%s ",InputName);
-	            NumberOfInputs+=1; 
+	            fprintf(outfile, "%s ", InputName);
+	            NumberOfInputs++;
+	            while (!isspace(*lptr)) lptr++;
+	            while (isspace(*lptr)) lptr++;
+		    if (*lptr == '\\') break;
 	         }
-		 else if (strstr(line, "OUTPUT")) break;
-	      }
+		 if (loc_getline(line, sizeof(line), netfile) <= 1 )
+		    break;
+		 else
+		    lptr = line;
+	      } 
 	   }
-	   if(strstr(line,"OUTPUT") != NULL ) {
-	      NumberOfOutputs=0;
-	      while(loc_getline(line, sizeof(line), NETFILE)>1 ) {
-                 if(sscanf(line,"%s :  %s",OutputName,OutputEquivalent)==2) {
+	   if (strstr(line, ".outputs") != NULL) {
+	      NumberOfOutputs = 0;
+	      lptr = line;
+	      while (!isspace(*lptr)) lptr++;
+	      while (isspace(*lptr)) lptr++;
+	      while (1) {
+		 if (strstr(lptr, ".gate")) break;
+                 while (sscanf(lptr, "%s", OutputName) == 1) {
 	            CleanupString(OutputName);
-	            CleanupString(OutputEquivalent);
-	            strcpy(OutputNodes[NumberOfOutputs][0],OutputName);
-	            strcpy(OutputNodes[NumberOfOutputs][1],OutputEquivalent);
-	            fprintf(OUT,"%s ",OutputName);
-	            NumberOfOutputs+=1; 
+	            fprintf(outfile,"%s ", OutputName);
+	            NumberOfOutputs++;
+	            while (!isspace(*lptr)) lptr++;
+	            while (isspace(*lptr)) lptr++;
+		    if (*lptr == '\\') break;
 	         }
-		 else if (strstr(line, "INSTANCE")) break;
+	         if (loc_getline(line, sizeof(line), netfile) <= 1)
+		    break;
+		 else
+		    lptr = line;
 	      }
-	      fprintf(OUT,"\n");
+	      fprintf(outfile, "\n");
 	   }
-	   if(strstr(line,"INSTANCE") != NULL ) {
-	      NumberOfInstances+=1;
-	      fprintf(OUT,"x%d ",NumberOfInstances);
-	      if(sscanf(line,"INSTANCE %s:",InstanceName)==1) {
+	   if (strstr(line, ".gate") != NULL) {
+	      NumberOfInstances++;
+	      fprintf(outfile, "x%d ", NumberOfInstances);
+	      lptr = line;
+	      while (isspace(*lptr)) lptr++;
+	      if (sscanf(lptr, ".gate %s", InstanceName) == 1) {
 	         CleanupString(InstanceName);
 
 		 /* Search library records for subcircuit */
@@ -348,40 +363,46 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT,
 		 }
 
 	         if (tsub == NULL) {
-	            if(vddnet == NULL) fprintf(OUT,"vdd ");
-	            if(gndnet == NULL) fprintf(OUT,"vss ");
+	            if (vddnet == NULL) fprintf(outfile,"vdd ");
+	            if (gndnet == NULL) fprintf(outfile,"vss ");
 	         }
 
-	         while(loc_getline(line, sizeof(line), NETFILE)>1 ) {
-	            if(sscanf(line,"%s :  %s",InstancePortName,InstancePortWire)==2) {
-	               CleanupString(InstancePortWire);
-	               for(i=0;i<NumberOfInputs;i++) {
-	                  if(strcmp(InstancePortWire,InputNodes[i][1]) == 0) {
-	                     strcpy(InstancePortWire,InputNodes[i][0]);
-	                  }
-	               }
-	               for(i=0;i<NumberOfOutputs;i++) {
-	                  if(strcmp(InstancePortWire,OutputNodes[i][1]) == 0) {
-	                     strcpy(InstancePortWire,OutputNodes[i][0]);
-	                  }
-	               }
+		 while (!isspace(*lptr)) lptr++;
+		 while (isspace(*lptr)) lptr++;
+		 while (!isspace(*lptr)) lptr++;
+		 while (isspace(*lptr)) lptr++;
+		 while (1) {
+		    char *eptr;
+		    eptr = strchr(lptr, '=');
+		    if (eptr == NULL) break;
+		    *eptr = '\0';
+		    if (sscanf(lptr, "%s", InstancePortName) != 1) break;
+		    lptr = eptr + 1;
+		    if (sscanf(lptr, "%s", InstancePortWire) != 1) break;
+	            CleanupString(InstancePortWire);
 
-		       if (tsub == NULL)
-	                  fprintf(OUT,"%s ",InstancePortWire);
-		       else {
-			  // Find port name in list
-	                  CleanupString(InstancePortName);
-			  for (tport = tsub->ports; tport; tport = tport->next) {
-			     if (!strcmp(tport->name, InstancePortName)) {
-				sprintf(tport->signal, InstancePortWire);
-				break;
-			     }
+		    if (tsub == NULL)
+	               fprintf(outfile,"%s ", InstancePortWire);
+		    else {
+		       // Find port name in list
+	               CleanupString(InstancePortName);
+		       for (tport = tsub->ports; tport; tport = tport->next) {
+			  if (!strcmp(tport->name, InstancePortName)) {
+			     sprintf(tport->signal, InstancePortWire);
+			     break;
 			  }
-			  if (tport == NULL)
-			     /* This will likely screw everything up. . . */
-	                     fprintf(OUT,"%s ",InstancePortWire);
 		       }
-	            }
+		       if (tport == NULL)
+			  /* This will likely screw everything up. . . */
+	                  fprintf(outfile,"%s ", InstancePortWire);
+		    }
+		    while (!isspace(*lptr)) lptr++;
+		    while (isspace(*lptr)) lptr++;
+		    if (*lptr == '\\') {
+	               if (loc_getline(line, sizeof(line), netfile) <= 1) break;
+		       lptr = line;
+		    }
+		    else if (*lptr == '\n') break;
 	         }
 	      }
 
@@ -391,12 +412,12 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *libfile, FILE *OUT,
 		 /* Write out all ports in proper order */
 		 for (tport = tsub->ports; tport; tport = tport->next) {
 		    if (tport->signal[0] == '\0')
-		       fprintf(OUT,"%d ", uniquenode++);
+		       fprintf(outfile,"%d ", uniquenode++);
 		    else
-		       fprintf(OUT,"%s ", tport->signal);
+		       fprintf(outfile,"%s ", tport->signal);
 		 }
 	      }
-              fprintf(OUT,"%s\n",InstanceName);
+              fprintf(outfile,"%s\n",InstanceName);
 	   } 
 	}
 }
@@ -414,7 +435,7 @@ void CleanupString(char text[LengthOfNodeName])
 	   i=0;
 	   while( CitationPnt[i+1] != '"' ) {
 	      CitationPnt[i]=CitationPnt[i+1];
-	      i+=1;
+	      i++;
 	   }
 	   CitationPnt[i]='\0';
            CitationPnt=strchr(text,'[');
@@ -422,7 +443,7 @@ void CleanupString(char text[LengthOfNodeName])
               i=0;
               while( CitationPnt[i+1] != ']' ) {
                  CitationPnt[i]=CitationPnt[i+1];
-                 i+=1;
+                 i++;
               }
               CitationPnt[i]='\0';
 	   }
@@ -520,14 +541,14 @@ int loc_getline( char s[], int lim, FILE *fp)
 void helpmessage()
 {
 
-    fprintf(stderr,"BDnet2BSpice [-options] netlist \n");
+    fprintf(stderr,"blif2BSpice [-options] netlist \n");
     fprintf(stderr,"\n");
-    fprintf(stderr,"BDnet2BSpice converts a netlist in bdnet format \n");
+    fprintf(stderr,"blif2BSpice converts a netlist in blif format \n");
     fprintf(stderr,"to BSpice subcircuit format. Output on stdout\n");
     fprintf(stderr,"\n");
     fprintf(stderr,"option, -h this message\n");    
     fprintf(stderr,"option, -p means: don't add power nodes to instances\n");
-    fprintf(stderr,"        only nodes present in the INSTANCE statement used\n");
+    fprintf(stderr,"        only nodes present in the .gate statement used\n");
 
     exit( EXIT_HELP );	
 } /* helpmessage() */

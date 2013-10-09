@@ -29,8 +29,8 @@ set bufname	[lindex $argv 4]
 
 set pinfile ${layoutdir}/${modulename}.pin
 set parfile ${layoutdir}/${modulename}.par
-set bdnetfile ${synthdir}/${modulename}.bdnet
-set outfile ${synthdir}/${modulename}_tmp.bdnet
+set bliffile ${synthdir}/${modulename}.blif
+set outfile ${synthdir}/${modulename}_tmp.blif
 set ignorefile ${synthdir}/${modulename}_nofanout
 
 if {$argc == 6} {set maxfanout [lindex $argv 5]}
@@ -42,8 +42,8 @@ if [catch {open ${pinfile} r} fpin] {
    exit 0
 }
 
-if [catch {open ${bdnetfile} r} fnet] {
-   puts stderr "Error: can't open file $bdnetfile for input"
+if [catch {open ${bliffile} r} fnet] {
+   puts stderr "Error: can't open file $bliffile for input"
    exit 0
 }
 
@@ -474,7 +474,7 @@ dict for {netname inst} $nets {
 }
 
 #-----------------------------------------------------------------
-# Read the bdnet file and write the revised version
+# Read the blif file and write the revised version
 #-----------------------------------------------------------------
 
 if [catch {open ${outfile} w} fout] {
@@ -482,21 +482,19 @@ if [catch {open ${outfile} w} fout] {
    exit 0
 }
 
-# We use the same method as bdnet2cel.tcl to get the instance numbers
+# We use the same method as blif2cel.tcl to get the instance numbers
 
 set mode none
 set counts [dict create]
 while {[gets $fnet line] >= 0} {
-   if [regexp {^INSTANCE[ \t]+"([^"]+)"[ \t]*:[ \t]*"([^"]+)"} $line \
-                lmatch macroname macrotype] {
+   if [regexp {^[ \t]*\.gate[ \t]+([^ \t]+)[ \t]+(.*)$} $line lmatch macroname rest] {
       if {"$mode" == "pins"} {
 
 	 # Dump the buffers in the tree first
 	 dict for {netname clusters} $splitnets {
 	    set subnets [lindex $clusters 1]
 	    for {set i 0} {$i < $subnets} {incr i} {
-	       puts $fout "INSTANCE \"$bufname\":\"physical\""
-	       puts $fout "\"$bufinpin\" : \"$netname\""
+	       puts -nonewline $fout " .gate $bufname ${bufinpin}=${netname}"
 	       set outname ${netname}_buf${i}
 	       if {[string first \[ $outname] >= 0} {
 		  # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
@@ -507,60 +505,65 @@ while {[gets $fnet line] >= 0} {
 		  # create problems downstream.
 		  set outname "[string map {< _ > ""} $outname]"
 	       }
-	       puts $fout "\"$bufoutpin\" : \"${outname}\"\n"
+	       puts $fout " ${bufoutpin}=${outname}"
 	    }
 	 }
       }
-      puts $fout $line
       set mode $macroname
       
       if {[catch {set j [dict get $counts $mode]}]} {set j 1}
       set cellinst "${mode}_$j"
       dict set counts $mode [+ 1 $j]
 
-   } elseif [regexp {^INPUT} $line lmatch] {
-      puts $fout $line
-      set mode "pins"
-   } elseif [regexp {^OUTPUT} $line lmatch] {
-      puts $fout $line
-      set mode "pins"
-   } elseif [regexp {^MODEL[ \t]+"([^"]+)"} $line lmatch cellverify] {
-      puts $fout $line
-      if {"$modulename" != "$cellverify"} {
-         puts -nonewline stderr "WARNING:  MODEL name ${cellverify} does not"
-         puts stderr " match filename ${modulename}!"
-      }
-   } elseif {"$mode" == "pins"} {
-      puts $fout $line
-   } else {
-      # In the middle of parsing an instance;  mode = instance name (in lowercase).
-      if [regexp {"([^"]+)"[ \t]*:[ \t]*"([^"]+)"} $line lmatch pinname netname] {
-	 if {![catch {set clusters [dict get $splitnets $netname]}]} {
-	    # puts stdout "Found net $netname on instance $cellinst"
-	    set cluster [lindex $clusters 0]
-	    if {![catch {set subidx [dict get $cluster ${cellinst}/${pinname}]}]} {
-	       # puts stdout "${cellinst}/${pinname} = ${netname}_buf${subidx}"
-	       set netname "${netname}_buf${subidx}"
-	       if {[string first \[ $netname] >= 0} {
-		  # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
-		  set netname "[string map {\] ""} $netname]\]"
+      puts -nonewline $fout " .gate $mode"
+      foreach pinsig $rest {
+	 if [regexp {([^ \t=]+)=([^ \t]+)} $pinsig lmatch pinname netname] {
+	    if {![catch {set clusters [dict get $splitnets $netname]}]} {
+	       # puts stdout "Found net $netname on instance $cellinst"
+	       set cluster [lindex $clusters 0]
+	       if {![catch {set subidx [dict get $cluster ${cellinst}/${pinname}]}]} {
+	          # puts stdout "${cellinst}/${pinname} = ${netname}_buf${subidx}"
+	          set netname "${netname}_buf${subidx}"
+	          if {[string first \[ $netname] >= 0} {
+		     # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
+		     set netname "[string map {\] ""} $netname]\]"
+	          }
+	          if {[string first < $netname] >= 0} {
+		     # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
+		     # create problems downstream.
+		     set netname "[string map {< _ > ""} $netname]"
+	          }
+	          puts -nonewline $fout " ${pinname}=${netname}"
+	       } else {
+	          # puts stdout "${cellinst}/${pinname} != ${netname}_buf?"
+	          puts -nonewline $fout " $pinsig"
 	       }
-	       if {[string first < $netname] >= 0} {
-		  # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
-		  # create problems downstream.
-		  set netname "[string map {< _ > ""} $netname]"
-	       }
-	       puts $fout "\"${pinname}\" : \"${netname}\""
 	    } else {
-	       # puts stdout "${cellinst}/${pinname} != ${netname}_buf?"
-	       puts $fout $line
+	       puts -nonewline $fout " $pinsig"
 	    }
 	 } else {
-	    puts $fout $line
+	    puts -nonewline $fout " $pinsig"
 	 }
-      } else {
-	 puts $fout $line
       }
+      puts $fout ""
+
+   } elseif [regexp {^[ \t]*\.inputs} $line lmatch] {
+      puts $fout $line
+      set mode "pins"
+   } elseif [regexp {^[ \t]*\.outputs} $line lmatch] {
+      puts $fout $line
+      set mode "pins"
+   } elseif [regexp {^[ \t]*\.model[ \t]+([^ \t]+)} $line lmatch cellverify] {
+      puts $fout $line
+      if {"$modulename" != "$cellverify"} {
+         puts -nonewline stderr "WARNING:  model name ${cellverify} does not"
+         puts stderr " match filename ${modulename}!"
+      }
+   } elseif [regexp {^[ \t]*\.end} $line lmatch] {
+      puts $fout $line
+      break
+   } elseif {"$mode" == "pins"} {
+      puts $fout $line
    }
 }
 

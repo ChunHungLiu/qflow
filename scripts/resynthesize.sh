@@ -88,21 +88,21 @@ endif
 # Spot check:  Did clocktree produce file ${rootname}.cel?
 #---------------------------------------------------------------------
 
-if ( !( -f ${synthdir}/${rootname}_tmp.bdnet || \
-	( -M ${synthdir}/${rootname}_tmp.bdnet \
+if ( !( -f ${synthdir}/${rootname}_tmp.blif || \
+	( -M ${synthdir}/${rootname}_tmp.blif \
         < -M ${layoutdir}/${rootname}.cel ))) then
-   echo "clocktree failure:  No file ${rootname}_tmp.bdnet." |& tee -a ${synthlog}
+   echo "clocktree failure:  No file ${rootname}_tmp.blif." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif
 
-# Make a backup of the original .bdnet file, then copy the modified
+# Make a backup of the original .blif file, then copy the modified
 # one over it.
 
 cd ${synthdir}
-cp ${rootname}.bdnet ${rootname}_orig.bdnet
-cp ${rootname}_tmp.bdnet ${rootname}.bdnet
-rm -f ${rootname}_tmp.bdnet
+cp ${rootname}.blif ${rootname}_orig.blif
+cp ${rootname}_tmp.blif ${rootname}.blif
+rm -f ${rootname}_tmp.blif
 
 #---------------------------------------------------------------------
 # Check all gates for fanout load, and adjust gate strengths as
@@ -118,16 +118,16 @@ if (! ${?fanout_options} ) then
    set fanout_options = "-l 75 -c 25"
 endif
 
-echo "Running BDnetFanout (iterative)" |& tee -a ${synthlog}
+echo "Running blifFanout (iterative)" |& tee -a ${synthlog}
 echo "" |& tee -a ${synthlog}
-if (-f ${techdir}/gate.cfg && -f ${bindir}/BDnetFanout ) then
+if (-f ${techdir}/gate.cfg && -f ${bindir}/blifFanout ) then
    set nchanged=1000
    while ($nchanged > 0)
-      mv ${rootname}.bdnet tmp.bdnet
-      ${bindir}/BDnetFanout ${fanout_options} -f ${rootname}_nofanout \
+      mv ${rootname}.blif tmp.blif
+      ${bindir}/blifFanout ${fanout_options} -f ${rootname}_nofanout \
 		-p ${techdir}/gate.cfg -s ${separator} \
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
-		tmp.bdnet ${rootname}.bdnet >>& ${synthlog}
+		tmp.blif ${rootname}.blif >>& ${synthlog}
       set nchanged=$status
       echo "nchanged=$nchanged" |& tee -a ${synthlog}
    end
@@ -136,11 +136,11 @@ else
 endif
 
 #---------------------------------------------------------------------
-# Spot check:  Did BDnetFanout exit with an error?
+# Spot check:  Did blifFanout exit with an error?
 #---------------------------------------------------------------------
 
 if ( $nchanged < 0 ) then
-   echo "BDnetFanout failure:  See ${synthlog} for error messages"
+   echo "blifFanout failure:  See ${synthlog} for error messages"
    echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif
@@ -155,37 +155,37 @@ echo "   Verilog: ${synthdir}/${rootname}.rtlnopwr.v" |& tee -a ${synthlog}
 echo "   Spice:   ${synthdir}/${rootname}.spc" |& tee -a ${synthlog}
 echo "" |& tee -a ${synthlog}
 
-echo "Running BDnet2Verilog." |& tee -a ${synthlog}
-${bindir}/BDnet2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.bdnet \
+echo "Running blif2Verilog." |& tee -a ${synthlog}
+${bindir}/blif2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.blif \
 	> ${rootname}.rtl.v
 
-${bindir}/BDnet2Verilog -p ${rootname}.bdnet > ${rootname}.rtlnopwr.v
+${bindir}/blif2Verilog -p ${rootname}.blif > ${rootname}.rtlnopwr.v
 
-echo "Running BDnet2BSpice." |& tee -a ${synthlog}
-${bindir}/BDnet2BSpice ${rootname}.bdnet -p ${vddnet} -g ${gndnet} \
+echo "Running blif2BSpice." |& tee -a ${synthlog}
+${bindir}/blif2BSpice ${rootname}.blif -p ${vddnet} -g ${gndnet} \
 	-l ${techdir}/${spicefile} > ${rootname}.spc
 
 #---------------------------------------------------------------------
-# Spot check:  Did BDnet2Verilog or BDnet2BSpice exit with an error?
+# Spot check:  Did blif2Verilog or blif2BSpice exit with an error?
 # Note that these files are not critical to the main synthesis flow,
 # so if they are missing, we flag a warning but do not exit.
 #---------------------------------------------------------------------
 
 if ( !( -f ${rootname}.rtl.v || \
-	( -M ${rootname}.rtl.v < -M ${rootname}.bdnet ))) then
-   echo "BDnet2Verilog failure:  No file ${rootname}.rtl.v created." \
+	( -M ${rootname}.rtl.v < -M ${rootname}.blif ))) then
+   echo "blif2Verilog failure:  No file ${rootname}.rtl.v created." \
 		|& tee -a ${synthlog}
 endif
 
 if ( !( -f ${rootname}.rtlnopwr.v || \
-	( -M ${rootname}.rtlnopwr.v < -M ${rootname}.bdnet ))) then
-   echo "BDnet2Verilog failure:  No file ${rootname}.rtlnopwr.v created." \
+	( -M ${rootname}.rtlnopwr.v < -M ${rootname}.blif ))) then
+   echo "blif2Verilog failure:  No file ${rootname}.rtlnopwr.v created." \
 		|& tee -a ${synthlog}
 endif
 
 if ( !( -f ${rootname}.spc || \
-	( -M ${rootname}.spc < -M ${rootname}.bdnet ))) then
-   echo "BDnet2BSpice failure:  No file ${rootname}.spc created." \
+	( -M ${rootname}.spc < -M ${rootname}.blif ))) then
+   echo "blif2BSpice failure:  No file ${rootname}.spc created." \
 		|& tee -a ${synthlog}
 endif
 
@@ -195,29 +195,29 @@ endif
 
 cd ${projectpath}
 
-rm -f ${synthdir}/${rootname}_tmp.bdnet >& /dev/null
-rm -f ${synthdir}/${rootname}_tmp_tmp.bdnet >& /dev/null
-rm -f ${synthdir}/tmp.bdnet >& /dev/null
-rm -f ${sourcedir}/${rootname}.bdnet
+rm -f ${synthdir}/${rootname}_tmp.blif >& /dev/null
+rm -f ${synthdir}/${rootname}_tmp_tmp.blif >& /dev/null
+rm -f ${synthdir}/tmp.blif >& /dev/null
+rm -f ${sourcedir}/${rootname}.blif
 
 #-------------------------------------------------------------------------
 # Regenerate the .cel file for TimberWolf
 # (Assume that the .par file was already made the first time through)
 #-------------------------------------------------------------------------
 
-echo "Running bdnet2cel.tcl" |& tee -a ${synthlog}
-${scriptdir}/bdnet2cel.tcl ${synthdir}/${rootname}.bdnet \
+echo "Running blif2cel.tcl" |& tee -a ${synthlog}
+${scriptdir}/blif2cel.tcl ${synthdir}/${rootname}.blif \
 	${techdir}/${leffile} \
 	${layoutdir}/${rootname}.cel >>& ${synthlog}
 
 #---------------------------------------------------------------------
-# Spot check:  Did bdnet2cel produce file ${rootname}.cel?
+# Spot check:  Did blif2cel produce file ${rootname}.cel?
 #---------------------------------------------------------------------
 
 if ( !( -f ${layoutdir}/${rootname}.cel || \
 	( -M ${layoutdir}/${rootname}.cel \
-        < -M ${synthdir}/${rootname}.bdenet ))) then
-   echo "bdnet2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
+        < -M ${synthdir}/${rootname}.blif ))) then
+   echo "blif2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
    exit 1
 endif

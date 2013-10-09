@@ -31,6 +31,10 @@
 /* September 4, 2013					*/
 /* verilogpp.c copied from vpreproc.c, changed to use	*/
 /* the same tokenizer developed for liberty2tech.	*/
+/*							*/
+/* October 8, 2013					*/
+/* Changed .init file format to be compatible with the	*/
+/* notation used by Odin-II for .blif file output.	*/
 /*------------------------------------------------------*/
 
 #define DEBUG 1
@@ -706,7 +710,7 @@ parse_bit(fstack *filestack, module *topmod, char *vstr, int idx)
 	       if (fullname != NULL) free(fullname);
 	       fullname = (char *)malloc(strlen(testvec->name) + 10);
 	       
-	       sprintf(fullname, "%s<%d>", testvec->name, j);
+	       sprintf(fullname, "%s~%d", testvec->name, j);
 	       return fullname;
 	    }
 	 }
@@ -1706,7 +1710,7 @@ main(int argc, char *argv[])
 				// notation compatible with verilog.
 
 				if (initvec->vector_size > 0)
-				    fprintf(finit, "%s<%d> %s\n", initvec->name, j, bptr);
+				    fprintf(finit, "%s~%d %s\n", initvec->name, j, bptr);
 				else
 				    fprintf(finit, "%s %s\n", initvec->name, bptr);
 
@@ -1717,7 +1721,7 @@ main(int argc, char *argv[])
 					j++;
 			   	    bptr = parse_bit(filestack, topmod, token, j);
 				    if (bptr != NULL)
-				        fprintf(finit, "%s<%d> %s\n", initvec->name,
+				        fprintf(finit, "%s~%d %s\n", initvec->name,
 						j, bptr);
 			        }
 			    }

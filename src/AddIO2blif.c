@@ -1,4 +1,4 @@
-// AddIO2BDnet
+// AddIO2blif
 //
 // Revision 0, 2006-11-11: Version 0.03 by R. Timothy Edwards, SB.
 // Revision 1, 2009-07-13: Version 0.04 minor cleanups by Philipp Klaus Krause.
@@ -61,7 +61,7 @@ int loc_getline( char s[], int lim, FILE *fp);
 struct Buffers *BufferAlloc();
 struct Clocks *ClockAlloc();
 struct InputPorts *CIAlloc();
-void AddClocks( FILE *BDNETFILE ,struct Clocks *Clock, struct Buffers *Buffer,
+void AddClocks( FILE *BLIFFILE ,struct Clocks *Clock, struct Buffers *Buffer,
 	int, int, struct InputPorts *, struct BufCell *, struct FlopCell *);
 void ReadClockInput(FILE *INPUT, struct InputPorts *ClockedInput);
 void ReadGenlib(char *, struct BufCell *, struct FlopCell *);
@@ -291,7 +291,7 @@ void ReadClockInput(FILE *INPUT, struct InputPorts *ClockedInput)
 
 
 /*
-void AddBuffers( FILE *BDNETFILE, struct Buffers *Buffer )
+void AddBuffers( FILE *BLIFFILE, struct Buffers *Buffer )
 {
 	struct Buffers *BuffPresent;
 	char line[LengthOfLine];
@@ -300,7 +300,7 @@ void AddBuffers( FILE *BDNETFILE, struct Buffers *Buffer )
 
 
 	BuffPresent=Buffer;
-        while(loc_getline(line, sizeof(line), BDNETFILE)>0 ) {
+        while(loc_getline(line, sizeof(line), BLIFFILE)>0 ) {
 	   if(strcmp(line,"OUTPUT") ==0 ) OUTPUTSection=TRUE;
 	   if(OUTPUTSection == TRUE) {
 	      if( sscanf(line,"%s : %s",outlabel,outnode) ==2) {
@@ -342,7 +342,7 @@ void CheckClock( char *name, struct Clocks *Clock)
 
 /* Add output and (optionally) input buffers buffers */
 
-void AddClocks( FILE *BDNETFILE ,struct Clocks *Clock, struct Buffers *Buffer,
+void AddClocks( FILE *BLIFFILE ,struct Clocks *Clock, struct Buffers *Buffer,
 	int BuffersOn, int ClockSomeInputs, struct InputPorts *ClockedInput,
 	struct BufCell *bufCell, struct FlopCell *flopCell)
 {
@@ -363,7 +363,7 @@ void AddClocks( FILE *BDNETFILE ,struct Clocks *Clock, struct Buffers *Buffer,
 	ClockPresent=Clock;
 	BuffPresent=Buffer;
 	if(ClockSomeInputs) ClockedInputPresent=ClockedInput;
-        while(loc_getline(line, sizeof(line), BDNETFILE)>0 ) {
+        while(loc_getline(line, sizeof(line), BLIFFILE)>0 ) {
 	   if(strncmp(line,"INPUT",5) ==0 ) {
 	        fprintf(stdout,"INPUT\n");
 	        INPUTSection=TRUE;
@@ -525,8 +525,8 @@ struct InputPorts *CIAlloc()
 
 void helpmessage()
 {
-    fprintf(stderr,"AddIO2BDnet [-options] bdnetfile\n");
-    fprintf(stderr,"takes a BDNET file as input and adds double buffers\n");
+    fprintf(stderr,"AddIO2blif [-options] bliffile\n");
+    fprintf(stderr,"takes a BLIF file as input and adds double buffers\n");
 
     fprintf(stderr,"to the outputs and D-flops to all inputs. Output on stdout.\n");
     fprintf(stderr,"\nThe option -b 'buffername' uses the cell named 'buffername'\n");

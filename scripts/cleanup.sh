@@ -57,7 +57,7 @@ cd ${projectpath}
 cd ${layoutdir}
 
 # Check if rootname needs a "_buf" suffix, which we use
-# when AddIO2BDnet is told to double-buffer the outputs.
+# when AddIO2blif is told to double-buffer the outputs.
 
 set origname=${rootname}
 if ( ! -f ${rootname}.cel && -f ${rootname}_buf.cel ) then
@@ -70,6 +70,7 @@ rm -f ${origname}.blif
 rm -f ${origname}.xml
 rm -f ${origname}_tmp.blif
 rm -f ${origname}_mapped.blif
+rm -f ${origname}_mapped_tmp.blif
 rm -f ${origname}.clk
 rm -f ${origname}.enc
 rm -f ${origname}.init
@@ -77,15 +78,15 @@ rm -f ${origname}_tmp.v
 
 #----------------------------------------------------------
 # Clean up files from synthesis.  Leave the final buffered
-# .bdnet netlist and the RTL verilog files
+# .blif netlist and the RTL verilog files
 #----------------------------------------------------------
 
 cd ${synthdir}
 
-# rm -f ${origname}.bdnet
-rm -f ${origname}_bak.bdnet
-rm -f ${origname}_tmp.bdnet
-rm -f ${rootname}_orig.bdnet
+# rm -f ${origname}.blif
+rm -f ${origname}_bak.blif
+rm -f ${origname}_tmp.blif
+rm -f ${rootname}_orig.blif
 rm -f ${rootname}_nofanout
 
 #----------------------------------------------------------

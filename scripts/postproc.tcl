@@ -1,28 +1,45 @@
 #!/usr/bin/tclsh
 #-------------------------------------------------------------------------
-# postproc --- post-process a bdnet file with the contents of the
+# postproc --- post-process a mapped .blif file with the contents of the
 # "init" file produced by "vpreproc".  Each signal from the "init"
 # file is tracked down as the output to a flop, and that flop is replaced
 # by a set or reset flop accordingly.  Information about cells to use
 # and their pins, etc., are picked up from "variables_file".
+#
+# This script also handles some aspects of output produced by Odin-II
+# and ABC.  It transforms indexes in the form "~index" to "<index>",
+# removes "top^" from top-level signal names, and for hieararchical
+# names in the form "module+instance", removes the module name (after
+# using it to track down any reset signals).
+#
+# The "init_file" name passed to the script is the top-level init file.
+# By taking the root of this name, the file searches <name>.dep for
+# dependencies, and proceeds to pull in additional initialization files
+# for additional modules used.
+#
+# Note that this file handles mapped blif files ONLY.  The only statements
+# allowed in the file are ".model", ".inputs", ".outputs", ".latch",
+# ".gate", and ".end".  The line ".default_input_arrival", if present,
+# is ignored.  In the output file, all ".latch" statements are replaced
+# with ".gate" statements for the specific flop gate.
 #-------------------------------------------------------------------------
-# Written by Tim Edwards May 6, 2007
-# MultiGiG, Inc.
+# Written by Tim Edwards October 8, 2013
+# Open Circuit Design
 #-------------------------------------------------------------------------
 
 if {$argc < 3} {
    puts stderr \
-	"Usage:  postproc.tcl bdnet_file init_file variables_file"
+	"Usage:  postproc.tcl mapped_blif_file init_file variables_file"
    exit 1
 }
 
-set bdnetfile [lindex $argv 0]
-set cellname [file rootname $bdnetfile]
-if {"$cellname" == "$bdnetfile"} {
-   set bdnetfile ${cellname}.bdnet
+set mbliffile [lindex $argv 0]
+set cellname [file rootname $mbliffile]
+if {"$cellname" == "$mbliffile"} {
+   set mbliffile ${cellname}.blif
 }
 
-set outfile ${cellname}_tmp.bdnet
+set outfile ${cellname}_tmp.blif
 
 set initfile [lindex $argv 1]
 set initname [file rootname $initfile]
@@ -35,8 +52,8 @@ set varsfile [lindex $argv 2]
 #-------------------------------------------------------------
 # Open files for read and write
 
-if [catch {open $bdnetfile r} bnet] {
-   puts stderr "Error: can't open file $bdnetfile for reading!"
+if [catch {open $mbliffile r} bnet] {
+   puts stderr "Error: can't open file $mbliffile for reading!"
    exit 1
 }
 
@@ -94,7 +111,7 @@ while {[gets $inet line] >= 0} {
 close $inet
 
 #-------------------------------------------------------------
-# Now post-process the bdnet file
+# Now post-process the blif file
 # The main thing to remember is that internal signals will be
 # outputs of flops, but external pin names have to be translated
 # to their internal names by looking at the OUTPUT section.
@@ -102,21 +119,12 @@ close $inet
 
 set cycle 0
 while {[gets $bnet line] >= 0} {
-   if [regexp {^INPUT} $line lmatch] {
-      set cycle 1
-   } elseif [regexp {^OUTPUT} $line lmatch] {
-      set cycle 2
-   } elseif [regexp {^INSTANCE} $line lmatch] {
+   if [regexp {^.gate} $line lmatch] {
       break
-   }
-   if {$cycle == 2} {
-      if [regexp {"(.+)"[ \t]*:[ \t]*"(.+)"} $line lmatch sigin sigout] {
-	 set idx [lsearch $flopsigs $sigin]
-	 if {$idx >= 0} {
-	    set sigout [string map {\[ << \] >>} $sigout]
-	    set flopsigs [lreplace $flopsigs $idx $idx $sigout]
-	 }
-      }
+   } elseif [regexp {^.latch} $line lmatch] {
+      break
+   } elseif [regexp {^.default_input_arrival} $line lmatch] {
+      continue
    }
    puts $onet $line
 }
@@ -127,160 +135,97 @@ while {[gets $bnet line] >= 0} {
 foreach resetnet [lsort -uniq $resetlist] {
    if {[string first "not_" $resetnet] == 0} {
       set rstorig [string range $resetnet 4 end]
-      puts $onet ""
-      puts $onet "INSTANCE \"${inverter}\":\"physical\""
-      puts $onet "\t\"${invertpin_in}\" : \"${rstorig}\";"
-      puts $onet "\t\"${invertpin_out}\" : \"${resetnet}\";"
-      puts $onet ""
+      puts $onet ".gate ${inverter} ${invertpin_in}=${rstorig} ${invertpin_out}=${resetnet}"
    }
-   puts $onet ""
-   puts $onet "INSTANCE \"${inverter}\":\"physical\""
-   puts $onet "\t\"${invertpin_in}\" : \"${resetnet}\";"
-   puts $onet "\t\"${invertpin_out}\" : \"pp_${resetnet}bar\";"
-   puts $onet ""
+   puts $onet ".gate ${inverter} ${invertpin_in}=${resetnet} ${invertpin_out}=pp_${resetnet}bar"
 }
 
-# The postproc file has replaced all latches with DFFDEFAULT having
-# three pins DDEFAULT, CDEFAULT, and QDEFAULT, in that order, which
-# makes it easy to parse.
+# Replace all .latch statements with .gate, with the appropriate gate type and pins,
+# and copy all .gate statements as-is.
 
 set sridx 0
 while {1} {
-   if [regexp [subst {^INSTANCE "DFFDEFAULT":"physical"}] $line lmatch] {
-       gets $bnet dline
-       gets $bnet cpline
-       gets $bnet qline
-       set srline ""
-       
-       if [regexp [subst {"QDEFAULT"\[ \\t\]+:\[ \\t\]+"(.+)"}] \
-			$qline lmatch signame] {
-	  set sigtest [string map {\[ << \] >>} $signame]
-	  set idx [lsearch $flopsigs $sigtest]
-          if {$idx < 0} {
-	     # signal names with '0' appended are an artifact of VIS/SIS
-	     if {[string index $signame end] == 0} {
-	        set idx [lsearch $flopsigs [string range $sigtest 0 end-1]]
-	     }
+   if [regexp {^\.latch[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]+[^ \t]+[ \t]+([^ \t]+)} \
+		$line lmatch dname qname cpname] {
+       set srnames ""
+       set rqidx [string first "^" $qname]
+       if {$rqidx >= 0} {
+	  set qname [string range $qname ${rqidx}+1 end]
+       }
+       set idx [lsearch $flopsigs $qname]
+       if {$idx >= 0} {
+	  set flopt [lindex $floptypes $idx]
+	  set resetnet [lindex $flopresetnet $idx]
+	  if {$setpininvert == 1} {
+	     set setresetnet pp_${resetnet}bar
+	     set setpinstatic ${vddnet}
+	  } else {
+	     set setresetnet ${resetnet}
+	     set setpinstatic ${gndnet}
 	  }
-          if {$idx >= 0} {
-	     set flopt [lindex $floptypes $idx]
-	     set resetnet [lindex $flopresetnet $idx]
-	     if {$setpininvert == 1} {
-	        set setresetnet pp_${resetnet}bar
-		set setpinstatic ${vddnet}
+	  if {$resetpininvert == 1} {
+	     set resetresetnet pp_${resetnet}bar
+	     set resetpinstatic ${vddnet}
+	  } else {
+	     set resetresetnet ${resetnet}
+	     set resetpinstatic ${gndnet}
+	  }
+	  if {$flopt == 1} {
+	     if {[catch {set flopset}]} {
+		set gname ".gate ${flopsetreset}"
+		set srnames "${setpin}=${setresetnet} ${resetpin}=${resetpinstatic}"
 	     } else {
-	        set setresetnet ${resetnet}
-		set setpinstatic ${gndnet}
+		set gname ".gate ${flopset}"
+		set srnames "${setpin}=${setresetnet}"
 	     }
-	     if {$resetpininvert == 1} {
-	        set resetresetnet pp_${resetnet}bar
-		set resetpinstatic ${vddnet}
+	  } elseif {$flopt == 0} {
+	     if {[catch {set flopreset}]} {
+		set gname ".gate ${flopsetreset}"
+		set srnames "${setpin}=${setpinstatic} ${resetpin}=${resetresetnet}"
 	     } else {
-	        set resetresetnet ${resetnet}
-		set resetpinstatic ${gndnet}
-	     }
-	     if {$flopt == 1} {
-		if {[catch {set flopset}]} {
-		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
-		   set srline "\t\"${setpin}\" : \"${setresetnet}\";\
-				\n\t\"${resetpin}\" : \"${resetpinstatic}\";"
-		} else {
-		   set line "INSTANCE \"${flopset}\":\"physical\""
-		   set srline "\t\"${setpin}\" : \"${setresetnet}\""
-		}
-	     } elseif {$flopt == 0} {
-		if {[catch {set flopreset}]} {
-		   set line "INSTANCE \"${flopsetreset}\":\"physical\""
-		   set srline "\t\"${setpin}\" : \"${setpinstatic}\";\
-				\n\t\"${resetpin}\" : \"${resetresetnet}\";"
-		} else {
-		   set line "INSTANCE \"${flopreset}\":\"physical\""
-		   set srline "\t\"${resetpin}\" : \"${resetresetnet}\""
-		}
-	     } else {
-		# Set signal to another signal.
-		set net1 sr_net_${sridx}
-		incr sridx
-		set net2 sr_net_${sridx}
-		incr sridx
-
-		if {$setpininvert == 0 || $resetpininvert == 1} {
-		   set line "INSTANCE \"${inverter}\":\"physical\""
-		   puts $onet $line
-		   set line "\t\"${invertpin_in}\" : \"${flopt}\";"
-		   puts $onet $line
-		   set line "\t\"${invertpin_out}\" : \"pp_${flopt}bar\";"
-		   puts $onet $line
-		}
-
-		if {$setpininvert == 1} {
-		   set line "INSTANCE \"${nandgate}\":\"physical\""
-		   puts $onet $line
-		   set line "\t\"${nandpin_in1}\" : \"${resetnet}\";"
-		   puts $onet $line
-		   set line "\t\"${nandpin_in2}\" : \"${flopt}\";"
-		   puts $onet $line
-		   set line "\t\"${nandpin_out}\" : \"${net1}\";\n"
-		   puts $onet $line
-		} else {
-		   set line "INSTANCE \"${norgate}\":\"physical\""
-		   puts $onet $line
-		   set line "\t\"${norpin_in1}\" : \"pp_${resetnet}bar\";"
-		   puts $onet $line
-		   set line "\t\"${norpin_in2}\" : \"pp_${flopt}bar\";"
-		   puts $onet $line
-		   set line "\t\"${norpin_out}\" : \"${net1}\";\n"
-		   puts $onet $line
-		}
-
-		if {$resetpininvert == 1} {
-		   set line "INSTANCE \"${nandgate}\":\"physical\""
-		   puts $onet $line
-		   set line "\t\"${nandpin_in1}\" : \"${resetnet}\";"
-		   puts $onet $line
-		   set line "\t\"${nandpin_in2}\" : \"pp_${flopt}bar\";"
-		   puts $onet $line
-		   set line "\t\"${nandpin_out}\" : \"${net2}\";\n"
-		   puts $onet $line
-		} else {
-		   set line "INSTANCE \"${norgate}\":\"physical\""
-		   puts $onet $line
-		   set line "\t\"${norpin_in1}\" : \"pp_${resetnet}bar\";"
-		   puts $onet $line
-		   set line "\t\"${norpin_in2}\" : \"${flopt}\";"
-		   puts $onet $line
-		   set line "\t\"${norpin_out}\" : \"${net2}\";\n"
-		   puts $onet $line
-		}
-
-		set line "INSTANCE \"${flopsetreset}\":\"physical\""
-		set srline \
-		   "\t\"${setpin}\" : \"${net1}\";\n\t\"${resetpin}\" : \"${net2}\";"
+		set gname ".gate ${flopreset}"
+		set srnames "${resetpin}=${resetresetnet}"
 	     }
 	  } else {
-	      # No recorded init state, use plain flop
-	      set line "INSTANCE \"${flopcell}\":\"physical\""
-	      set srline ""
+	     # Set signal to another signal.
+	     set net1 sr_net_${sridx}
+	     incr sridx
+	     set net2 sr_net_${sridx}
+	     incr sridx
+
+	     if {$setpininvert == 0 || $resetpininvert == 1} {
+		puts $onet ".gate ${inverter} ${invertpin_in}=${flopt} ${invertpin_out}=pp_${flopt}_bar"
+	     }
+
+	     if {$setpininvert == 1} {
+		puts -nonewline $onet ".gate ${nandgate} ${nandpin_in1}=${resetnet} "
+		puts $onet "${nandpin_in2}=${flopt} ${nandpin_out}=${net1}"
+	     } else {
+		puts -nonewline $onet ".gate ${norgate} ${norpin_in1}=pp_${resetnet}bar "
+		puts $onet "${norpin_in2}=pp_${flopt}bar ${norpin_out}=${net1}"
+	     }
+
+	     if {$resetpininvert == 1} {
+		puts -nonewline $onet ".gate ${nandgate} ${nandpin_in1}=${resetnet} "
+		puts $onet "${nandpin_in2}=pp_${flopt}bar ${nandpin_out}=${net2}"
+	     } else {
+		puts -nonewline $onet ".gate ${norgate} ${norpin_in1}=pp_${resetnet}bar "
+		puts $onet "${norpin_in2}=${flopt} ${norpin_out}=${net2}"
+	     }
+
+	     set gname ".gate ${flopsetreset}"
+	     set srnames "${setpin}=${net1} ${resetpin}=${net2}"
 	  }
-       }
 
-       # Substitute real pin names for DDEFAULT, CDEFAULT, and QDEFAULT
-       regsub {DDEFAULT} $dline $floppinin dline
-       regsub {CDEFAULT} $cpline $floppinclk cpline
-       regsub {QDEFAULT} $qline $floppinout qline
-
-       puts $onet $line
-       puts $onet $dline
-       puts $onet $cpline
-       if {[string length $srline] > 0} {
-          puts $onet $srline
+       } else {
+	   # No recorded init state, use plain flop
+	   set gname ".gate ${flopcell}"
+	   set srnames ""
        }
-       puts $onet $qline
+       puts $onet "$gname ${floppinin}=$dname ${floppinclk}=$cpname $srnames ${floppinout}=$qname"
+
    } else {
        puts $onet $line
    }
    if {[gets $bnet line] < 0} break
 }
-
-# Overwrite the original file
-file rename -force $outfile $bdnetfile

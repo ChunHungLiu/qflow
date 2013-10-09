@@ -95,11 +95,18 @@ while {[gets $cinit line] >= 0} {
    }
 }
 
+set intclocks [lsort -unique $intclocks]
+set intresets [lsort -unique $intresets]
+
+set absresets {}
+foreach reset $intresets {
+   lappend absresets [string map {~ ""} $reset]
+}
 
 # If there are no internally-defined clocks or resets in the system,
 # then just copy the input file to the output file and we're done.
 
-if {([llength intclocks] == 0) && ([llength intresets] == 0)} {
+if {([llength $intclocks] == 0) && ([llength $absresets] == 0)} {
    close $vnet
    close $ctmp
    close $cinit
@@ -123,23 +130,21 @@ while {[gets $vnet line] >= 0} {
     if {$inmodule == 1} {
 
 	if [regexp {\(} $line lmatch] {
-	    foreach clock [lsort -unique $intclocks] {
+	    foreach clock $intclocks {
 		puts $vtmp "\txloopback_in_$clock,"
 		puts $vtmp "\txloopback_out_$clock,"
 	    }
-	    foreach reset [lsort -unique $intresets] {
-		set absreset [string map {~ ""} $reset]
-		puts $vtmp "\txreset_out_$absreset,"
+	    foreach reset $absresets {
+		puts $vtmp "\txreset_out_$reset,"
 	    }
 	} elseif [regexp {;} $line lmatch] {
 	    puts $vtmp ""
-	    foreach clock [lsort -unique $intclocks] {
+	    foreach clock $intclocks {
 		puts $vtmp "   input\txloopback_in_$clock;"
 		puts $vtmp "   output\txloopback_out_$clock;"
 	    }
-	    foreach reset [lsort -unique $intresets] {
-		set absreset [string map {~ ""} $reset]
-		puts $vtmp "   output\txreset_out_$absreset;"
+	    foreach reset $absresets {
+		puts $vtmp "   output\txreset_out_$reset;"
 	    }
 	    break;
 	}
@@ -162,7 +167,7 @@ while {[gets $vnet line] >= 0} {
 	 regsub -all $RE $line xloopback_out_$clock line
       }
    }
-   foreach reset $intresets {
+   foreach reset $absresets {
       set RE [subst {\\m$reset\\M}]
       regsub -all $RE $line xreset_out_$reset line
    }

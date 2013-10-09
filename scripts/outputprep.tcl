@@ -13,28 +13,28 @@
 #    the name whereever it occurs.
 #
 # usage:
-#	  outputprep.tcl <bdnetfile> <outfile>
+#	  outputprep.tcl <bliffile> <outfile>
 #
 #-------------------------------------------------------------------------
 namespace path {::tcl::mathop ::tcl::mathfunc}
 
-set bdnetfile [lindex $argv 0]
-set cellname [file rootname $bdnetfile]
-if {"$cellname" == "$bdnetfile"} {
-   set bdnetfile ${cellname}.bdnet
+set bliffile [lindex $argv 0]
+set cellname [file rootname $bliffile]
+if {"$cellname" == "$bliffile"} {
+   set bliffile ${cellname}.blif
 }
 
 set outfile [lindex $argv 1]
 set outname [file rootname $outfile]
 if {"$outname" == "$outfile"} {
-   set outfile ${outname}.bdnet
+   set outfile ${outname}.blif
 }
 
 #-------------------------------------------------------------
 # Open files for read and write
 
-if [catch {open $bdnetfile r} bnet] {
-   puts stderr "Error: can't open file $bdnetfile for reading!"
+if [catch {open $bliffile r} bnet] {
+   puts stderr "Error: can't open file $bliffile for reading!"
    exit 0
 }
 
@@ -53,40 +53,44 @@ set state 0
 while {[gets $bnet line] >= 0} {
 
    if {$state == 0} {
-      if [regexp {^[ \t]*OUTPUT} $line lmatch] {
+      if [regexp {^[ \t]*\.outputs[ \t]*(.*)$} $line lmatch rest] {
          set state 1
+         foreach name_in $rest {
+	    lappend outputsigs $name_in
+         }
       }
       puts $bout $line
    } elseif {$state == 1} {
-
-      if [regexp {^[ \t]*"([^ \t:]+)"[ \t:]+"([^ \t:]+)"(.*)$} $line \
-		lmatch name_in name_out rest] {
-	 if [string match $name_in $name_out] {
-	    lappend outputsigs $name_in
-	 }
-      }
-      puts $bout $line
-
-      if [regexp {^[ \t]*INSTANCE} $line lmatch] {
+      if [regexp {^[ \t]*\.gate} $line lmatch] {
 	 # Proceed to the net rewriting part
 	 set state 2
+      } else {
+         foreach name_in $line {
+	    lappend outputsigs $name_in
+         }
+         puts $bout $line
       }
-   } elseif {$state == 2} {
+   }
+
+   if {$state == 2} {
 
       # For any signal name containing "_FF_NODE", if the text preceding
       # "_FF_NODE" is not in the output list, then remove the "_FF_NODE" to
       # restore the original signal name.
 
-      if [regexp {^[ \t]*"([^ \t:]+)"[ \t:]+"([^ \t:]+)_FF_NODE"(.*)$} $line \
-		lmatch pin_name sig_name rest] {
-	 if {[lsearch -exact $outputsigs $sig_name] < 0} {
-	    puts $bout "\t\"$pin_name\" : \"$sig_name\"$rest"
+      set oline ""
+      foreach pinsig $line {
+         if {[regexp {([^ \t=]+)=([^ \t_]+)_FF_NODE} $pinsig lmatch pin_name sig_name]} {
+	    if {[lsearch -exact $outputsigs $sig_name] < 0} {
+	       set oline "$oline ${pin_name}=${sig_name}"
+	    } else {
+	       set oline "$oline $pinsig"
+	    }
 	 } else {
-	    puts $bout $line
-	 }
-      } else {
-	 puts $bout $line
+	    set oline "$oline $pinsig"
+	 } 
       }
+      puts $bout $oline
    }
 }
 
