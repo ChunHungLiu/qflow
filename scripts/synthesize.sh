@@ -96,14 +96,15 @@ EOF
 # module names instead!
 #---------------------------------------------------------------------
 
-set alldeps = `cat ${rootname}.dep`
+set alldeps = `cat ${rootname}.dep | grep -v = | sort -u | sed -e'/^\s*$/d'`
 
 while ( "x${alldeps}" != "x" )
     set newdeps = $alldeps
     set alldeps = ""
     foreach subname ( $newdeps )
 	${bindir}/verilogpp ${vpp_options} ${subname}.v >>& ${synthlog}
-	set alldeps = "${alldeps} `cat ${subname}.dep`"
+	set deplist = `cat ${subname}.dep | grep -v = | sort -u | sed -e'/^\s*$/d'`
+	set alldeps = "${alldeps} ${deplist}"
 	echo "      <verilog_file>${subname}_tmp.v</verilog_file>" \
 		>> ${rootname}.xml
     end
@@ -272,8 +273,8 @@ if ( $errline == 1 ) then
 endif
 
 echo "Generating resets for register flops" |& tee -a ${synthlog}
-${scriptdir}/postproc.tcl ${rootname}_mapped.blif \
- 	${rootname}.init ${techdir}/${techname}.sh
+${scriptdir}/postproc.tcl ${rootname}_mapped.blif ${rootname} \
+	 ${techdir}/${techname}.sh
 
 #---------------------------------------------------------------------
 # Odin_II appends "top^" to top-level signals, we want to remove these.
@@ -304,8 +305,20 @@ else
    set subs1b=""
 endif
 
+#---------------------------------------------------------------------
+# The following substitutions make the output syntax from Odin/ABC
+# more palatable.  The "~i" notation for vector indices is changed to
+# "<i>".  The signal notation "top.module+instance.module+instance...
+# ^signal" is changed to "instance/instance/.../signal", keeping the
+# hierarchy information and ensuring the uniqueness of the signal
+# name, while greatly reducing the signal name lengths.
+#---------------------------------------------------------------------
+
 cat ${rootname}_mapped_tmp.blif | sed -e "s/top^//g" \
 	-e "s/~\([0-9]*\)/<\1>/g" \
+	-e "s/\.[^ \+]*+/\//g" \
+	-e "s/=top\//=/g" \
+	-e "s/\^/\//g" \
 	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
 	> ${synthdir}/${rootname}_tmp.blif
 

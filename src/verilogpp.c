@@ -35,6 +35,15 @@
 /* October 8, 2013					*/
 /* Changed .init file format to be compatible with the	*/
 /* notation used by Odin-II for .blif file output.	*/
+/*							*/
+/* October 9, 2013					*/
+/* Extended the .dep format to retain all connectivity	*/
+/* information for all subcircuits, so that the reset	*/
+/* values can be substituted correctly.  This relies on	*/
+/* Odin-II's method of always naming flop outputs at	*/
+/* the lowest level, with a hierarchical name that	*/
+/* contains all of the subcircuit module and instance	*/
+/* names.						*/
 /*------------------------------------------------------*/
 
 #define DEBUG 1
@@ -1240,6 +1249,10 @@ main(int argc, char *argv[])
 			free(subname);
 			subname = NULL;
 		    }
+		    if (instname != NULL) {
+			free(instname);
+			instname = NULL;
+		    }
 		}
 		else if (!strcmp(token, "endmodule")) {
 		    if (DEBUG) printf("End of module \"%s\" found.\n", topmod->name);
@@ -1271,7 +1284,9 @@ main(int argc, char *argv[])
 			}
 			if (newmod == NULL) {
 	 		    fputs(subname, fdep);
-			    fputs("\n", fdep);
+			    fputs("\ninstance ==> ", fdep);
+			    fputs(instname, fdep);
+	 		    fputs("\n", fdep);
 			}
 			free(instname);
 			free(subname);
@@ -1551,6 +1566,10 @@ main(int argc, char *argv[])
 		    if (subname != NULL) {
 			free(subname);
 			subname = NULL;
+		    }
+		    if (instname != NULL) {
+			free(instname);
+			instname = NULL;
 		    }
 		}
 		else if (!strcmp(token, "wire")) {
@@ -1848,8 +1867,14 @@ main(int argc, char *argv[])
 	    case SUBCIRCUIT:
 		if (!strcmp(token, "("))
 		    pushstack(&stack, SUBPIN, stack->suspend);
-		else if (!strcmp(token, ";"))
+		else if (!strcmp(token, ";")) {
 		    popstack(&stack);
+		    fputs("\n", fdep);
+		}
+		else if (*token == '.') {
+		    fputs(token + 1, fdep);
+		    fputs("=", fdep);
+		}
 
 		if (stack->suspend <= 1) {
 		    fputs(token, ftmp);
@@ -1860,6 +1885,10 @@ main(int argc, char *argv[])
 	    case SUBPIN:
 		if (!strcmp(token, ")"))
 		    popstack(&stack);
+		else {
+		    fputs(token, fdep);
+		    fputs("\n", fdep);
+		}
 
 		if (stack->suspend <= 1) {
 		    fputs(token, ftmp);

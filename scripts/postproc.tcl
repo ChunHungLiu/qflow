@@ -22,16 +22,19 @@
 # ".gate", and ".end".  The line ".default_input_arrival", if present,
 # is ignored.  In the output file, all ".latch" statements are replaced
 # with ".gate" statements for the specific flop gate.
+#
 #-------------------------------------------------------------------------
-# Written by Tim Edwards October 8, 2013
+# Written by Tim Edwards October 8-9, 2013
 # Open Circuit Design
 #-------------------------------------------------------------------------
 
 if {$argc < 3} {
    puts stderr \
-	"Usage:  postproc.tcl mapped_blif_file init_file variables_file"
+	"Usage:  postproc.tcl mapped_blif_file root_modname variables_file"
    exit 1
 }
+
+puts stdout "Postproc register initialization handling"
 
 set mbliffile [lindex $argv 0]
 set cellname [file rootname $mbliffile]
@@ -40,13 +43,7 @@ if {"$cellname" == "$mbliffile"} {
 }
 
 set outfile ${cellname}_tmp.blif
-
-set initfile [lindex $argv 1]
-set initname [file rootname $initfile]
-if {"$initname" == "$initfile"} {
-   set initfile ${initname}.init
-}
-
+set rootname [lindex $argv 1]
 set varsfile [lindex $argv 2]
 
 #-------------------------------------------------------------
@@ -54,11 +51,6 @@ set varsfile [lindex $argv 2]
 
 if [catch {open $mbliffile r} bnet] {
    puts stderr "Error: can't open file $mbliffile for reading!"
-   exit 1
-}
-
-if [catch {open $initfile r} inet] {
-   puts stderr "Error: can't open file $initfile for reading!"
    exit 1
 }
 
@@ -85,30 +77,118 @@ while {[gets $vfd line] >= 0} {
 }
 
 #-------------------------------------------------------------
-# Read the file of initialization signals and their values
+# Read the file of dependencies, and follow the dependencies
+# through all transformations.  Build up a list of instances
+# (not used, problably not needed), and a bunch of array
+# variables, in which each instance maps the connections to
+# its pins from the module that calls it.
 #-------------------------------------------------------------
 
-set resetlist {}
+proc readresets {prefix modname} {
+   global flopsigs
+   global floptypes
+   global flopresetnet
+   global resetlist
+   global $prefix
+
+   puts stdout "readresets:  modname prefix is $prefix modname is $modname"
+
+   set depfile ${modname}.dep
+   if [catch {open $depfile r} dfd] {
+      puts stderr "Error: can't open file $depfile for reading!"
+   } else {
+      set newinst ""
+      while {[gets $dfd line] >= 0} {
+         set eidx [string first = $line]
+         if {$eidx == -1} {
+	    if {$line == ""} {
+	       # End of instance information --- now descend into instance
+	       readresets $newprefix $newmodname
+	    } else {
+	       set newmodname $line
+	       lappend newlist $newmodname
+	    }
+         } else {
+	    if {[string first == $line] == -1} {
+	       set pinname [string range $line 0 $eidx-1]
+	       set pinvalue [string range $line $eidx+1 end]
+	       if [catch {set ${newprefix}($pinname) [subst \${${prefix}($pinvalue)}]}] {
+	          set ${newprefix}($pinname) ${prefix}^$pinvalue
+	       }
+	       set temp [subst \${${newprefix}($pinname)}]
+	       # puts stdout "  record pin: ${newprefix}($pinname) $temp"
+
+	    } else {
+	       set newinst [lindex $line 2]
+	       lappend instlist $newinst
+	       set newprefix ${prefix}.${newmodname}+${newinst}
+	       global $newprefix
+	    }
+         }
+      }
+      close $dfd
+   }
+
+   # Now that all instances have been descended into and parsed,
+   # handle the reset assignments for this module
+
+   set initfile ${modname}.init
+   if [catch {open $initfile r} ifd] {
+      puts stderr "Error: can't open file $depfile for reading!"
+      return
+   }
+   while {[gets $ifd line] >= 0} {
+      if [regexp {^([^ \t]+)[ \t]+([^ \t]+)[ \t]+[^ \t]+} $line lmatch resetnet resettype] {
+	 if {[string first ~ $resetnet] == 0} {
+	    set rinvert 1
+	    set resetnet [string range $resetnet 1 end]
+	 } else {
+	    set rinvert 0
+	 }
+	 # Find the name of the reset net at the top of the hierarchy
+	 if {$resettype == "input"} {
+	    # Value of reset net passed from above
+	    if [catch {set resetnode [subst \${${prefix}($resetnet)}]}] {
+	       set resetnode ${prefix}^${resetnet}
+	    }
+	 } else {
+	    set resetnode ${prefix}^${resetnet}
+	 }
+	 if {$rinvert == 1} {
+	    set resetnode not_$resetnode
+ 	 }
+         lappend resetlist $resetnode
+
+         # puts stdout "record reset: $resetnode"
+
+      } elseif [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
+	 # Flop output is always a local node name, by Odin-II convention
+         lappend flopsigs ${prefix}^${signal}_FF_NODE
+	 if {$initcond == "0" || $initcond == "1"} {
+            lappend floptypes $initcond
+	 } else {
+            lappend floptypes [subst \$${prefix}($initcond)]
+	 }
+         lappend flopresetnet $resetnode
+
+         # puts stdout "record flop: Q=${prefix}^${signal}_FF_NODE"
+      }
+
+   }
+   close $ifd
+}
+
+#-------------------------------------------------------------
+# Read the file of initialization signals and their values
+# for the top-level module
+#-------------------------------------------------------------
+
 set flopsigs {}
 set floptypes {}
 set flopresetnet {}
+set resetlist {}
 
-while {[gets $inet line] >= 0} {
-   if [regexp {^([^ \t]+)[ \t]+[^ \t]+[ \t]+[^ \t]+} $line lmatch resetnet] {
-      set resetnet [string map {! not_ ~ not_} $resetnet]
-      lappend resetlist $resetnet
-   } elseif [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
-      lappend flopsigs ${signal}_FF_NODE
-      lappend floptypes $initcond
-      lappend flopresetnet $resetnet
-   } else {
-      set resetnet $line
-      set resetnet [string map {! not_ ~ not_} $resetnet]
-      lappend resetlist $resetnet
-   }
-}
-
-close $inet
+readresets top $rootname
 
 #-------------------------------------------------------------
 # Now post-process the blif file
@@ -148,10 +228,6 @@ while {1} {
    if [regexp {^\.latch[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]+[^ \t]+[ \t]+([^ \t]+)} \
 		$line lmatch dname qname cpname] {
        set srnames ""
-       set rqidx [string first "^" $qname]
-       if {$rqidx >= 0} {
-	  set qname [string range $qname ${rqidx}+1 end]
-       }
        set idx [lsearch $flopsigs $qname]
        if {$idx >= 0} {
 	  set flopt [lindex $floptypes $idx]
