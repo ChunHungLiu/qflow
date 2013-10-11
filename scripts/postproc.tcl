@@ -91,7 +91,7 @@ proc readresets {prefix modname} {
    global resetlist
    global $prefix
 
-   puts stdout "readresets:  modname prefix is $prefix modname is $modname"
+   # puts stdout "readresets:  modname prefix is $prefix modname is $modname"
 
    set depfile ${modname}.dep
    if [catch {open $depfile r} dfd] {

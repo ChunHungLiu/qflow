@@ -161,6 +161,7 @@ typedef struct _istack {
 #define  BLOCKING	17		// Inside a blocking assignment (end with ";")
 #define  SUBCIRCUIT	18		// Inside a subcircuit call
 #define  SUBPIN		19		// Inside a subcircuit pin connection
+#define	 FUNCTION	20		// Inside a function definition
 
 // Edge types
 #define  NEGEDGE	1
@@ -190,8 +191,6 @@ typedef struct _istack {
 /* is returned as a token if it is not whitespace (whitespace is	*/
 /* ignored).								*/
 /*									*/
-/* If "delimiter" is -1, then return the complete current full line.	*/
-/*									*/
 /* "fout" is only supplied so that we can write newlines when found.	*/
 /* This keeps the line numbering of the input and output the same.	*/
 /*									*/
@@ -201,7 +200,7 @@ typedef struct _istack {
 /*----------------------------------------------------------------------*/
 
 char *
-advancetoken(fstack **filestack, FILE *fout, char delimiter)
+advancetoken(fstack **filestack, FILE *fout, char *delimiter)
 {
     static char token[VPP_LINE_MAX];
     static char line[VPP_LINE_MAX];
@@ -222,17 +221,14 @@ advancetoken(fstack **filestack, FILE *fout, char delimiter)
     // line when read-to-eol is requested and the input is already
     // at the end of the line.
 
-    if (lineptr != NULL && *lineptr == '\n' && delimiter == '\n') {
+    if (lineptr != NULL && *lineptr == '\n' && (delimiter != NULL) &&
+		strchr(delimiter, '\n')) {
 	*token = '\n';
 	*(token + 1) = '\0';
 	return token;
     }
 
     while (1) {		/* Keep processing until we get a token or hit EOF */
-
-	if (lineptr != NULL && delimiter == (char)-1) {
-	    return line;
-	}
 
 	if (lineptr != NULL && *lineptr == '/' && *(lineptr + 1) == '*') {
 	    commentblock = 1;
@@ -295,7 +291,7 @@ advancetoken(fstack **filestack, FILE *fout, char delimiter)
 		break;
 	    if (*lineptr == '/' && *(lineptr + 1) == '*')
 		break;
-	    if (delimiter != 0 && *lineptr == delimiter) {
+	    if ((delimiter != NULL) && strchr(delimiter, *lineptr)) {
 		if (nest > 0)
 		    nest--;
 		else
@@ -303,18 +299,18 @@ advancetoken(fstack **filestack, FILE *fout, char delimiter)
 	    }
 
 	    // Watch for nested delimiters!
-	    if (delimiter == '}' && *lineptr == '{') nest++;
-	    if (delimiter == ')' && *lineptr == '(') nest++;
-	    if (delimiter == ']' && *lineptr == '[') nest++;
+	    if ((delimiter != NULL) && strchr(delimiter, '}') && *lineptr == '{') nest++;
+	    if ((delimiter != NULL) && strchr(delimiter, ')') && *lineptr == '(') nest++;
+	    if ((delimiter != NULL) && strchr(delimiter, ']') && *lineptr == '[') nest++;
 
-	    if (delimiter == 0)
+	    if (delimiter == NULL)
 		if (*lineptr == ' ' || *lineptr == '\t')
 		    break;
 
 	    // Note: '#' must be followed directly by a value, so it
 	    // is treated like part of a numerical value
 
-	    if (delimiter == 0) {
+	    if (delimiter == NULL) {
 		if (*lineptr == '(' || *lineptr == ')') {
 		    if (tptr == token) *tptr++ = *lineptr++;
 		    break;
@@ -438,14 +434,14 @@ advancetoken(fstack **filestack, FILE *fout, char delimiter)
 	    *tptr++ = *lineptr++;
 	}
 	*tptr = '\0';
-	if ((delimiter != 0) && (*lineptr != delimiter))
+	if ((delimiter != NULL) && !strchr(delimiter, *lineptr))
 	    concat = 1;
-	else if ((delimiter != 0) && (*lineptr == delimiter))
+	else if ((delimiter != 0) && strchr(delimiter, *lineptr))
 	    break;
 	else if (tptr > token)
 	    break;
     }
-    if (delimiter != 0) lineptr++;
+    if (delimiter != NULL) lineptr++;
 
     while (*lineptr == ' ' || *lineptr == '\t') lineptr++;
 
@@ -862,7 +858,7 @@ main(int argc, char *argv[])
 
     int tempsuspend;
     int start, end, ival, i, j, k;
-    int parm, ifdeflevel;
+    int parm, pcont, ifdeflevel;
     int condition;
     int resetdone;
     char edgetype;
@@ -939,7 +935,7 @@ main(int argc, char *argv[])
 
     /* Read continuously and break loop when input is exhausted */
 
-    while ((newtok = advancetoken(&filestack, ftmp, 0)) != NULL) {
+    while ((newtok = advancetoken(&filestack, ftmp, NULL)) != NULL) {
 
 	/* State-independent processing */
 	/* First set is values for which we should NOT substitute parameters */
@@ -949,7 +945,7 @@ main(int argc, char *argv[])
 	    fputs(" ", ftmp);
 	    fputs(newtok, ftmp);
 	    fputs(" ", ftmp);
-	    newtok = advancetoken(&filestack, ftmp, '\n'); // Read to EOL
+	    newtok = advancetoken(&filestack, ftmp, "\n"); // Read to EOL
 	    fputs(newtok, ftmp);	// Write out this line
 	    continue;
 	}
@@ -989,7 +985,7 @@ main(int argc, char *argv[])
 	    ifdefstack = newifstack;
 
 	    /* Get parameter name */
-	    newtok = advancetoken(&filestack, ftmp, 0);
+	    newtok = advancetoken(&filestack, ftmp, NULL);
 
 	    /* If we are already in an if block state 0, then	*/
 	    /* set state to -1.  This prevents any changing of	*/
@@ -1025,7 +1021,7 @@ main(int argc, char *argv[])
 
 	if (!strcmp(newtok, "`undef")) {
 	    /* Get parameter name */
-	    newtok = advancetoken(&filestack, ftmp, 0);
+	    newtok = advancetoken(&filestack, ftmp, NULL);
 	    for (newparam = params; newparam; newparam = newparam->next) {
 		if (!strcmp(newparam->name, newtok)) {
 		    testparam = newparam;
@@ -1040,73 +1036,83 @@ main(int argc, char *argv[])
 	parm = 1;
 	if (!strcmp(newtok, "parameter") || !(parm = strcmp(newtok, "`define"))) {
 
-	    /* Get parameter name */
-	    newtok = advancetoken(&filestack, ftmp, 0);
-	    if (!strcmp(newtok, "[")) {
-		/* Ignore array bounds on parameter definitions */
-	        newtok = advancetoken(&filestack, ftmp, ']');
-	        newtok = advancetoken(&filestack, ftmp, 0);
-	    }
+	    while (1) {
 
-	    newparam = (parameter *)malloc(sizeof(parameter));
-	    if (!parm) {
-		newparam->name = (char *)malloc(2 + strlen(newtok));
-		sprintf(newparam->name, "`%s", newtok);
-	    }
-	    else {
-		newparam->name = strdup(newtok);
-	    }
-	    newparam->next = NULL;
+		pcont = 0;
+		/* Get parameter name */
+		newtok = advancetoken(&filestack, ftmp, NULL);
+		if (!strcmp(newtok, "[")) {
+		    /* Ignore array bounds on parameter definitions */
+	            newtok = advancetoken(&filestack, ftmp, "]");
+	            newtok = advancetoken(&filestack, ftmp, NULL);
+		}
 
-	    /* Get parameter value---only accept semicolon or a		*/
-	    /* newline as a delimiter.  This will pick up the '='	*/
-	    /* so we need to skip over it, and other whitespace.	*/
+		newparam = (parameter *)malloc(sizeof(parameter));
+		if (!parm) {
+		    newparam->name = (char *)malloc(2 + strlen(newtok));
+		    sprintf(newparam->name, "`%s", newtok);
+		}
+		else {
+		    newparam->name = strdup(newtok);
+		}
+		newparam->next = NULL;
 
-	    if (parm) {
-	        newtok = advancetoken(&filestack, ftmp, 0);
-		if (strcmp(newtok, "="))
-		    fprintf(stderr, "Error File %s Line %d: \"parameter\" without \"=\"\n",
+		/* Get parameter value---only accept semicolon or a	*/
+		/* newline as a delimiter.  This will pick up the '='	*/
+		/* so we need to skip over it, and other whitespace.	*/
+
+		if (parm) {
+		    newtok = advancetoken(&filestack, ftmp, NULL);
+		    if (strcmp(newtok, "="))
+			fprintf(stderr, "Error File %s Line %d: \"parameter\" without \"=\"\n",
 				filestack->filename, filestack->currentLine);
-		newtok = advancetoken(&filestack, ftmp, ';');
-		if (strchr(newtok, '\n') != NULL)
-		    fprintf(stderr, "Error File %s Line %d: \"parameter\" without "
+		    newtok = advancetoken(&filestack, ftmp, ";\n");
+		    if (strchr(newtok, '\n') != NULL) {
+			fprintf(stderr, "Error File %s Line %d: \"parameter\" without "
 				"ending \";\"\n",
 				filestack->filename, filestack->currentLine);
-	    }
-	    else {
-	        newtok = advancetoken(&filestack, ftmp, '\n');
-	    }
-
-	    /* Run "paramcpy" to make any parameter substitutions	*/
-	    /* in the parameter itself.					*/
-
-	    paramcpy(token, newtok, params);
-	    newparam->value = strdup(token);
-
-	    /* Sort tokens by size to avoid substituting	*/
-	    /* part of a parameter (e.g., "START" and		*/
-	    /* "START1" should not be ambiguous!)		*/
-
-	    if (params == NULL)
-		params = newparam;
-	    else {
-		parameter *pptr, *lptr;
-		lptr = NULL;
-		for (pptr = params; pptr; pptr = pptr->next) {
-		    if (strlen(pptr->name) < strlen(newparam->name)) {
-			if (lptr == NULL) {
-			    newparam->next = params;
-			    params = newparam;
-			}
-			else {
-			    newparam->next = lptr->next;
-			    lptr->next = newparam;
-			}
-			break;
 		    }
-		    lptr = pptr;
+		    else if (*(newtok + strlen(newtok) - 1) == ',') {
+		       *(newtok + strlen(newtok) - 1) = '\0';
+		       pcont = 1;
+		    }
 		}
-		if (pptr == NULL) lptr->next = newparam;
+		else {
+		    newtok = advancetoken(&filestack, ftmp, "\n");
+		}
+
+		/* Run "paramcpy" to make any parameter substitutions	*/
+		/* in the parameter itself.				*/
+
+		paramcpy(token, newtok, params);
+		newparam->value = strdup(token);
+
+		/* Sort tokens by size to avoid substituting	*/
+		/* part of a parameter (e.g., "START" and	*/
+		/* "START1" should not be ambiguous!)		*/
+
+		if (params == NULL)
+		    params = newparam;
+		else {
+		    parameter *pptr, *lptr;
+		    lptr = NULL;
+		    for (pptr = params; pptr; pptr = pptr->next) {
+			if (strlen(pptr->name) < strlen(newparam->name)) {
+			    if (lptr == NULL) {
+				newparam->next = params;
+				params = newparam;
+			    }
+			    else {
+				newparam->next = lptr->next;
+				lptr->next = newparam;
+			    }
+			    break;
+			}
+			lptr = pptr;
+		    }
+		    if (pptr == NULL) lptr->next = newparam;
+		}
+		if ((parm == 0) || (pcont == 0)) break;
 	    }
 	    continue;
 	}
@@ -1115,9 +1121,9 @@ main(int argc, char *argv[])
 
 	if (!strcmp(token, "`include")) {
 	    /* Get parameter name */
-	    newtok = advancetoken(&filestack, ftmp, 0);	/* Get 1st quote */
+	    newtok = advancetoken(&filestack, ftmp, NULL);	/* Get 1st quote */
 	    if (!strcmp(newtok, "\""))
-		newtok = advancetoken(&filestack, ftmp, '\"');
+		newtok = advancetoken(&filestack, ftmp, "\"");
 
 	    // Create a new file record and push it
 	    newfile = (fstack *)malloc(sizeof(fstack));
@@ -1150,6 +1156,9 @@ main(int argc, char *argv[])
 		    newmod->name = NULL;
 		    newmod->next = topmod;
 		    topmod = newmod;
+		}
+		else if (!strcmp(token, "function")) {
+		    pushstack(&stack, FUNCTION, stack->suspend);
 		}
 		else if (!strcmp(token, "`timescale")) {
 		    fputs("// ", ftmp);		// Comment this out!
@@ -1254,6 +1263,9 @@ main(int argc, char *argv[])
 			instname = NULL;
 		    }
 		}
+		else if (!strcmp(token, "function")) {
+		    pushstack(&stack, FUNCTION, stack->suspend);
+		}
 		else if (!strcmp(token, "endmodule")) {
 		    if (DEBUG) printf("End of module \"%s\" found.\n", topmod->name);
 		    popstack(&stack);
@@ -1318,7 +1330,7 @@ main(int argc, char *argv[])
 		    int aval;
 
 		    fputs(token, ftmp);
-		    newtok = advancetoken(&filestack, ftmp, ']');
+		    newtok = advancetoken(&filestack, ftmp, "]");
 		    paramcpy(token, newtok, params);	// Substitute parameters
 		    fputs(token, ftmp);
 		    fputs("] ", ftmp);
@@ -1502,9 +1514,15 @@ main(int argc, char *argv[])
 			// list is used to make a wire assignment look like
 			// a register, in defiance of all logic.
 
-			fputs("always @( ", ftmp);
-			stack->suspend = 0;
+			if (stack->suspend != 0) {
+			   fputs("always @( ", ftmp);
+			   stack->suspend = 0;
+			}
 		    }
+		}
+		if (stack->suspend <= 1) {
+		    fputs(token, ftmp);
+		    fputs(" ", ftmp);
 		}
 		break;
 		
@@ -1701,7 +1719,7 @@ main(int argc, char *argv[])
 			    // If token is a vector bundle, get all of it
 			    if (*token == '{') {
 				fputs(token, ftmp);
-				newtok = advancetoken(&filestack, ftmp, '}');
+				newtok = advancetoken(&filestack, ftmp, "}");
 				paramcpy(token, newtok, params);
 				fputs(token, ftmp);
 				fputs("}", ftmp);
@@ -1883,11 +1901,13 @@ main(int argc, char *argv[])
 		break;
 
 	    case SUBPIN:
-		if (!strcmp(token, ")"))
+		if (!strcmp(token, ")")) {
 		    popstack(&stack);
-		else {
-		    fputs(token, fdep);
 		    fputs("\n", fdep);
+		}
+		else {
+		    // Need to handle vector notation. . . [..]
+		    fputs(token, fdep);
 		}
 
 		if (stack->suspend <= 1) {
@@ -1900,6 +1920,16 @@ main(int argc, char *argv[])
 		if (!strcmp(token, "endcase")) {
 		    popstack(&stack);
 		    if (stack->state == IF_ELSE) popstack(&stack);
+		}
+		if (stack->suspend <= 1) {
+		    fputs(token, ftmp);
+		    fputs(" ", ftmp);
+		}
+		break;
+
+	    case FUNCTION:
+		if (!strcmp(token, "endfunction")) {
+		    popstack(&stack);
 		}
 		if (stack->suspend <= 1) {
 		    fputs(token, ftmp);

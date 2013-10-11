@@ -118,27 +118,33 @@ if {([llength $intclocks] == 0) && ([llength $absresets] == 0)} {
 set inmodule 0
 while {[gets $vnet line] >= 0} {
 
-    puts $vtmp $line
-
     # Find the "module" line and look for the open parens starting the
     # I/O list
 
-    if [regexp {^[ \t]*module} $line lmatch] {
+    if [regexp {^[ \t]*module[ \t]*(.*)$} $line lmatch rest] {
 	set inmodule 1
+	puts -nonewline $vtmp "module "
+	set line $rest
+    } else {
+	puts $vtmp $line
     }
 
     if {$inmodule == 1} {
 
-	if [regexp {\(} $line lmatch] {
+	if [regexp {^([^ \t]*)[ \t]*\([ \t]*(.*)$} $line lmatch first rest] {
+	    puts -nonewline $vtmp "$first ("
+	    set line $rest
 	    foreach clock $intclocks {
-		puts $vtmp "\txloopback_in_$clock,"
-		puts $vtmp "\txloopback_out_$clock,"
+		puts -nonewline $vtmp "xloopback_in_$clock, "
+		puts -nonewline $vtmp "xloopback_out_$clock, "
 	    }
 	    foreach reset $absresets {
-		puts $vtmp "\txreset_out_$reset,"
+		puts -nonewline $vtmp "xreset_out_$reset, "
 	    }
-	} elseif [regexp {;} $line lmatch] {
-	    puts $vtmp ""
+	}
+	puts $vtmp $line
+
+	if [regexp {;} $line lmatch] {
 	    foreach clock $intclocks {
 		puts $vtmp "   input\txloopback_in_$clock;"
 		puts $vtmp "   output\txloopback_out_$clock;"
@@ -146,7 +152,8 @@ while {[gets $vnet line] >= 0} {
 	    foreach reset $absresets {
 		puts $vtmp "   output\txreset_out_$reset;"
 	    }
-	    break;
+	    set inmodule 0
+	    break
 	}
     }
 }

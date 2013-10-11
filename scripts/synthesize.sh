@@ -99,7 +99,7 @@ EOF
 set alldeps = `cat ${rootname}.dep | grep -v = | sort -u | sed -e'/^\s*$/d'`
 
 while ( "x${alldeps}" != "x" )
-    set newdeps = $alldeps
+    set newdeps = "${alldeps}"
     set alldeps = ""
     foreach subname ( $newdeps )
 	${bindir}/verilogpp ${vpp_options} ${subname}.v >>& ${synthlog}
