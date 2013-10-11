@@ -97,6 +97,7 @@ EOF
 #---------------------------------------------------------------------
 
 set alldeps = `cat ${rootname}.dep | grep -v = | sort -u | sed -e'/^\s*$/d'`
+set fulldeplist = "$alldeps"
 
 while ( "x${alldeps}" != "x" )
     set newdeps = "${alldeps}"
@@ -105,9 +106,16 @@ while ( "x${alldeps}" != "x" )
 	${bindir}/verilogpp ${vpp_options} ${subname}.v >>& ${synthlog}
 	set deplist = `cat ${subname}.dep | grep -v = | sort -u | sed -e'/^\s*$/d'`
 	set alldeps = "${alldeps} ${deplist}"
-	echo "      <verilog_file>${subname}_tmp.v</verilog_file>" \
-		>> ${rootname}.xml
+	set fulldeplist = "${fulldeplist} ${alldeps}"
     end
+end
+
+# Get a unique list of all the subcells used
+set uniquedeplist = `echo $fulldeplist | sed -e "s/ /\n/g" | sort -u`
+
+foreach subname ( $uniquedeplist )
+   echo "      <verilog_file>${subname}_tmp.v</verilog_file>" \
+		>> ${rootname}.xml
 end
 
 #---------------------------------------------------------------------
