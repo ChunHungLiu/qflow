@@ -33,6 +33,7 @@ else
    echo	      variable names:
    echo
    echo			$vpp_options	for verilog preprocessor
+   echo			$yosys_options	for yosys
    echo			$odin_options	for Odin-II
    echo			$abc_options	for ABC
    echo			$abc_script	file containing alternative abc script
@@ -70,14 +71,21 @@ touch ${synthlog}
 if ( ! ${?vpp_options} ) then
    set vpp_options = ""
 endif
+if ("x$synthtool" != "xyosys") then
+   set vpp_style = "-s odin"
+else
+   set vpp_style = ""
+endif
 
 cd ${sourcedir}
 echo "Running verilog preprocessor" |& tee -a ${synthlog}
-${bindir}/verilogpp ${vpp_options} ${rootname}.v >>& ${synthlog}
+${bindir}/verilogpp ${vpp_style} ${vpp_options} ${rootname}.v >>& ${synthlog}
 
-# Hack for Odin-II bug:  to be removed when bug is fixed
-${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
-mv ${rootname}_munge.v ${rootname}_tmp.v
+if ("x$synthtool" != "xyosys") then
+   # Hack for Odin-II bug:  to be removed when bug is fixed
+   ${scriptdir}/vmunge.tcl ${rootname}.v >>& ${synthlog}
+   mv ${rootname}_munge.v ${rootname}_tmp.v
+endif
 
 #---------------------------------------------------------------------
 # Create first part of the XML config file for Odin_II
@@ -136,6 +144,50 @@ cat >> ${rootname}.xml << EOF
 EOF
 
 #---------------------------------------------------------------------
+# Generate the yosys script
+#---------------------------------------------------------------------
+
+set blif_opts = ""
+
+# Set options for generating constants
+# if ($?tiehi) then
+#    if ( "$tiehi" != "") then
+#       set blif_opts = "${blif_opts} -true ${tiehi}
+
+# Set option for generating buffers
+set blif_opts = "${blif_opts} -buf ${bufcell} ${bufpin_in} ${bufpin_out}"
+
+# Set option for generating only the flattened top-level cell
+set blif_opts = "${blif_opts} -top ${rootname}"
+      
+cat > ${rootname}.ys << EOF
+# Synthesis script for yosys created by qflow
+read_verilog ${rootname}_tmp.v
+EOF
+
+foreach subname ( $uniquedeplist )
+   echo "read_verilog ${subname}_tmp.v" >> ${rootname}.ys
+end
+
+cat >> ${rootname}.ys << EOF
+# High-level synthesis
+hierarchy; proc; memory; opt; fsm; opt
+flatten ${rootname}
+hierarchy -top ${rootname}
+
+# Map to internal cell library
+techmap; opt
+
+# Map combinatorial cells
+abc -liberty ${techdir}/${libertyfile}
+
+# Cleanup
+opt
+clean
+write_blif ${blif_opts} ${rootname}_mapped.blif
+EOF
+
+#---------------------------------------------------------------------
 # Spot check:  Did vpreproc produce file ${rootname}.init?
 #---------------------------------------------------------------------
 
@@ -149,6 +201,8 @@ endif
 #---------------------------------------------------------------------
 # Run odin_ii on the verilog source to get a BLIF output file
 #---------------------------------------------------------------------
+
+if ("x$synthtool" != "xyosys") then
 
 if ( ! ${?odin_options} ) then
    set odin_options = ""
@@ -281,8 +335,27 @@ if ( $errline == 1 ) then
 endif
 
 echo "Generating resets for register flops" |& tee -a ${synthlog}
-${scriptdir}/postproc.tcl ${rootname}_mapped.blif ${rootname} \
+${scriptdir}/postproc.tcl -t odin ${rootname}_mapped.blif ${rootname} \
 	 ${techdir}/${techname}.sh
+
+else
+
+#---------------------------------------------------------------------
+# Yosys synthesis
+#---------------------------------------------------------------------
+
+if ( ! ${?yosys_options} ) then
+   set yosys_options = ""
+endif
+
+echo "Running yosys for verilog parsing and synthesis" |& tee -a ${synthlog}
+eval ${bindir}/yosys ${yosys_options} -s ${rootname}.ys |& tee -a ${synthlog}
+
+echo "Generating resets for register flops" |& tee -a ${synthlog}
+${scriptdir}/postproc.tcl -t yosys ${rootname}_mapped.blif ${rootname} \
+	 ${techdir}/${techname}.sh
+
+endif
 
 #---------------------------------------------------------------------
 # Odin_II appends "top^" to top-level signals, we want to remove these.
@@ -324,7 +397,9 @@ endif
 # and everywhere else returned to their original names.
 #---------------------------------------------------------------------
 
-cat ${rootname}_mapped_tmp.blif | sed -e "s/top^//g" \
+if ("x$synthtool" != "xyosys") then
+
+   cat ${rootname}_mapped_tmp.blif | sed -e "s/top^//g" \
 	-e "/\.outputs/s/xreset_out_[^ ]*//g" \
 	-e "/\.outputs/s/xloopback_out_[^ ]*//g" \
 	-e "/\.inputs/s/xloopback_in_[^ ]*//g" \
@@ -337,6 +412,20 @@ cat ${rootname}_mapped_tmp.blif | sed -e "s/top^//g" \
 	-e "s/\^/\//g" \
 	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
 	> ${synthdir}/${rootname}_tmp.blif
+
+else
+
+   # For yosys, remove backslashes, references to "$techmap", and
+   # make local input nodes of the form $0node<a:b><c> into the
+   # form node<c>_FF_INPUT
+
+   cat ${rootname}_mapped_tmp.blif | sed \
+	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
+	-e 's/\\\([^$]\)/\1/g' \
+	-e 's/$techmap//g' \
+	-e 's/$0\([^ \t<]*\)<[0-9]*:[0-9]*>\([^ \t]*\)/\1\2_FF_INPUT/g' \
+	> ${synthdir}/${rootname}_tmp.blif
+endif
 
 #---------------------------------------------------------------------
 # Spot check:  Did postproc et al. produce file ${rootname}_tmp.blif?
@@ -356,8 +445,17 @@ cd ${synthdir}
 # Add initial conditions with set and reset flops
 #---------------------------------------------------------------------
 
-echo "Restoring original names on internal DFF outputs" |& tee -a ${synthlog}
-${scriptdir}/outputprep.tcl ${rootname}_tmp.blif ${rootname}.blif
+if ("x$synthtool" != "xyosys") then
+
+   echo "Restoring original names on internal DFF outputs" |& tee -a ${synthlog}
+   ${scriptdir}/outputprep.tcl ${rootname}_tmp.blif ${rootname}.blif
+
+else
+
+   cp ${rootname}_tmp.blif ${rootname}.blif
+
+endif
+
 
 #---------------------------------------------------------------------
 # Spot check:  Did outputprep produce file ${rootname}.blif?

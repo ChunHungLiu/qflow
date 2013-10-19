@@ -15,6 +15,11 @@ QFLOW_QROUTER_PATH = @QFLOW_QROUTER_PATH@
 QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
 QFLOW_ODIN_PATH = @QFLOW_ODIN_PATH@
 QFLOW_MAGIC_PATH = @QFLOW_MAGIC_PATH@
+QFLOW_YOSYS_PATH = @QFLOW_YOSYS_PATH@
+
+HAVE_ABC = @HAVE_ABC@
+HAVE_YOSYS = @HAVE_YOSYS@
+HAVE_ODIN_II = @HAVE_ODIN_II@
 
 OBJECTS = AddIO2blif.o blif2BSpice.o blif2Verilog.o blifFanout.o
 OBJECTS += verilogpp.o dcombine.o liberty2tech.o
@@ -55,9 +60,16 @@ install: $(TARGETS)
 	@echo "Installing links to TimberWolf, qrouter, odin_ii, and abc"
 	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s $(QFLOW_TW_PATH) twdir)
 	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
-	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc)
-	(cd ${BININSTALL};  $(RM) -f odin_ii;  ln -s $(QFLOW_ODIN_PATH) odin_ii)
+	@if test "${HAVE_ABC}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc); \
+	fi
+	@if test "${HAVE_ODIN_II}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f odin_ii;  ln -s $(QFLOW_ODIN_PATH) odin_ii); \
+	fi
 	(cd ${BININSTALL};  $(RM) -f magic;  ln -s $(QFLOW_MAGIC_PATH) magic)
+	@if test "${HAVE_YOSYS}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f yosys;  ln -s $(QFLOW_YOSYS_PATH) yosys); \
+	fi
 
 uninstall:
 	$(RM) -rf ${BININSTALL}

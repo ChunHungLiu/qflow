@@ -44,6 +44,12 @@
 /* the lowest level, with a hierarchical name that	*/
 /* contains all of the subcircuit module and instance	*/
 /* names.						*/
+/*							*/
+/* October 16, 2013					*/
+/* Added a switch for changing between syntax used by	*/
+/* Odin-II, which replaces brackets with a tilde, and	*/
+/* that used by Yosys, which preserves the verilog	*/
+/* bracket notation.					*/
 /*------------------------------------------------------*/
 
 #define DEBUG 1
@@ -53,6 +59,7 @@
 #include <ctype.h>		// For isalnum()
 #include <malloc.h>
 #include <stdlib.h>		// For exit(n)
+#include <unistd.h>		// For getopt()
 
 #define VPP_LINE_MAX 16384
 
@@ -172,6 +179,15 @@ typedef struct _istack {
 #define  EQUAL		1
 #define  NOT_EQUAL	2
 #define  NOT		3
+
+// Output syntax styles
+#define  ODIN		0
+#define  YOSYS		1
+
+// For getopt. . .
+
+extern int	optind;
+extern char	*optarg;
 
 /*----------------------------------------------------------------------*/
 /* Tokenizer routine							*/
@@ -485,7 +501,7 @@ get_bitval(char *token)
 /*----------------------------------------------------------------------*/
 
 char *
-parse_bit(fstack *filestack, module *topmod, char *vstr, int idx)
+parse_bit(fstack *filestack, module *topmod, char *vstr, int idx, int style)
 {
    int vsize, vval, realsize;
    static char bitval[2] = "0";
@@ -715,7 +731,11 @@ parse_bit(fstack *filestack, module *topmod, char *vstr, int idx)
 	       if (fullname != NULL) free(fullname);
 	       fullname = (char *)malloc(strlen(testvec->name) + 10);
 	       
-	       sprintf(fullname, "%s~%d", testvec->name, j);
+	       if (style == YOSYS)
+		  sprintf(fullname, "%s<%d>", testvec->name, j);
+	       else
+		  sprintf(fullname, "%s~%d", testvec->name, j);
+
 	       return fullname;
 	    }
 	 }
@@ -856,6 +876,7 @@ main(int argc, char *argv[])
 
     char *subname = NULL, *instname = NULL;
 
+    int style = YOSYS;
     int tempsuspend;
     int start, end, ival, i, j, k;
     int parm, pcont, ifdeflevel;
@@ -863,15 +884,41 @@ main(int argc, char *argv[])
     int resetdone;
     char edgetype;
  
-    /* Only one argument, which is the source filename */
+    /* One required argument, which is the source filename		*/
+    /* One optional argument, which is -s <style>, with	<style> being	*/
+    /* either "odin" or "yosys".					*/
 
-    if (argc != 2) {
-	fprintf(stderr, "Usage:  vpreproc <source_file.v>\n");
+    while ((i = getopt(argc, argv, "s:")) != EOF) {
+	switch (i) {
+	    case 's':
+		if (!strncmp(optarg, "odin", 4))
+		    style = ODIN;
+		else if (!strncmp(optarg, "yosys", 5))
+		    style = YOSYS;
+		else {
+		    fprintf(stderr, "Usage: vpreproc [-s <style>] <source_file.v>\n");
+		    fprintf(stderr, "Where <style> is one of \"odin\" or \"yosys\".\n");
+		    exit(1);
+		}
+		break;
+	    default:
+		fprintf(stderr, "Usage: vpreproc [-s <style>] <source_file.v>\n");
+		fprintf(stderr, "Where <style> is one of \"odin\" or \"yosys\".\n");
+		break;
+	}
+    }
+
+    if (optind < argc) {
+	filename = strdup(argv[optind]);
+    }
+    else {
+	fprintf(stderr, "Usage: vpreproc [-s <style>] <source_file.v>\n");
+	fprintf(stderr, "Where <style> is one of \"odin\" or \"yosys\".\n");
 	exit(1);
     }
 
-    /* Copy argv[1] to filename and remove any extension */
-    filename = strdup(argv[1]);
+    /* Remove any filename extension */
+
     xp = strrchr(filename, '.');
 
     /* "filename" will be the 1st argument without any file extension.	*/
@@ -1435,9 +1482,13 @@ main(int argc, char *argv[])
 		    // And change output type to be not suspended
 		    fputs("always @ (*) ", ftmp);
 		    stack->suspend = 0;
+		    pushstack(&stack, ABODY_PEND, stack->suspend);
 		}
 		else if (!strcmp(token, "(")) {
 		    pushstack(&stack, SENSELIST, stack->suspend);
+		}
+		else if (!strcmp(token, ")")) {
+		    pushstack(&stack, ABODY_PEND, stack->suspend);
 		}
 		else {
 		    fprintf(stderr, "Error File %s Line %d:  Expected sensitivity list.\n",
@@ -1447,6 +1498,7 @@ main(int argc, char *argv[])
 		break;
 
 	    case SENSELIST:
+		tempsuspend = 0;
 		if (!strcmp(token, "posedge")) {
 		    edgetype = POSEDGE;
 		}
@@ -1458,6 +1510,8 @@ main(int argc, char *argv[])
 		}
 		else if (!strcmp(token, "*")) {
 		    fputs("always @ (*)", ftmp);
+		    tempsuspend = 1;
+		    popstack(&stack);
 		    stack->suspend = 0;
 		}
 		else if (!strcmp(token, ")")) {
@@ -1472,11 +1526,10 @@ main(int argc, char *argv[])
 			fprintf(ftmp, "always @( posedge %s ) ", clocksig->name);
 
 		    if (topmod->resetlist == NULL) {
+			if (clocksig != NULL) tempsuspend = 1;
 			stack->suspend = 0;		// No resets, no processing
 			clocksig = NULL;
 		    }
-		    else if (stack->suspend <= 1)
-			fputs(")", ftmp);
 		}
 		else {
 		    if (edgetype == POSEDGE || edgetype == NEGEDGE) {
@@ -1520,7 +1573,7 @@ main(int argc, char *argv[])
 			}
 		    }
 		}
-		if (stack->suspend <= 1) {
+		if (stack->suspend <= 1 && tempsuspend == 0) {
 		    fputs(token, ftmp);
 		    fputs(" ", ftmp);
 		}
@@ -1739,15 +1792,21 @@ main(int argc, char *argv[])
 				free(testsig);
 			    }
 
-			    if ((bptr = parse_bit(filestack, topmod, token, j))
+			    if ((bptr = parse_bit(filestack, topmod, token, j, style))
 					!= NULL) {
 
-				// NOTE:  The finit file uses signal<idx> notation
-				// compatible with the .bdnet file, not the signal[idx]
-				// notation compatible with verilog.
+				// NOTE:  The finit file uses signal<idx> notation,
+				// not the signal[idx] notation compatible with verilog,
+				// mostly for reasons of variable naming and handling in
+				// Tcl.  For Odin-II, it uses the ~idx notation that Odin-II
+				// creates.
 
-				if (initvec->vector_size > 0)
-				    fprintf(finit, "%s~%d %s\n", initvec->name, j, bptr);
+				if (initvec->vector_size > 0) {
+				    if (style == YOSYS)
+				       fprintf(finit, "%s<%d> %s\n", initvec->name, j, bptr);
+				    else
+				       fprintf(finit, "%s~%d %s\n", initvec->name, j, bptr);
+				}
 				else
 				    fprintf(finit, "%s %s\n", initvec->name, bptr);
 
@@ -1756,10 +1815,13 @@ main(int argc, char *argv[])
 					j--;
 				    else
 					j++;
-			   	    bptr = parse_bit(filestack, topmod, token, j);
-				    if (bptr != NULL)
-				        fprintf(finit, "%s~%d %s\n", initvec->name,
-						j, bptr);
+			   	    bptr = parse_bit(filestack, topmod, token, j, style);
+				    if (bptr != NULL) {
+				        if (style == YOSYS)
+				            fprintf(finit, "%s<%d> %s\n", initvec->name, j, bptr);
+					else
+				            fprintf(finit, "%s~%d %s\n", initvec->name, j, bptr);
+				    }
 			        }
 			    }
 			    initvec = NULL;

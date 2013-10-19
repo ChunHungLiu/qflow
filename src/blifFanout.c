@@ -290,7 +290,7 @@ int main (int argc, char *argv[])
 
    state = NONE;
    while ((s = fgets(line, MAXLINE, infptr)) != NULL) {
-      t = strtok(s, " \t=\\\n");
+      t = strtok(s, " \t=\n");
       while (t) {
 	 switch (state) {
 	    case GATENAME:
@@ -751,7 +751,7 @@ void write_output(FILE *infptr, FILE *outfptr)
    gateline[0] = '\0';
    while ((s = fgets(line, MAXLINE, infptr)) != NULL) {
       strcpy(inputline, s);		// save this for later
-      t = strtok(s, " \t=\\\n");
+      t = strtok(s, " \t=\n");
       while (t) { 
 	 switch (state) {
 	    case GATENAME:
@@ -802,7 +802,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		        orig = find_size(Gatename);
 			stren = best_size(Gatename, nl->total_load + MaxOutputCap
 					+ WireCap, NULL);
-			if (strcmp(stren, Gatename)) {
+			if (stren && strcmp(stren, Gatename)) {
 			   needscorrecting = TRUE;
 			   if (VerboseFlag)
 			      printf("\nOutput Gate changed from %s to %s\n",
@@ -832,7 +832,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 		  if (VerboseFlag)
 	             printf("\nInsert buffers %s - %g\n", s, inv_size);
 	          s = strstr(gateline, Nodename);	// get output node
-	          s = strtok(s, " \t\\");		// strip it clean
+	          s = strtok(s, " \\\t");		// strip it clean
 		  if (*s == '[') {
 		     char *p = strchr(s, ']');
 		     if (p != NULL)

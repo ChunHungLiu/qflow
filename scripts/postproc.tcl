@@ -21,7 +21,8 @@
 # allowed in the file are ".model", ".inputs", ".outputs", ".latch",
 # ".gate", and ".end".  The line ".default_input_arrival", if present,
 # is ignored.  In the output file, all ".latch" statements are replaced
-# with ".gate" statements for the specific flop gate.
+# with ".gate" statements for the specific flop gate.  The ".subckt"
+# statement is equivalent to ".gate".
 #
 #-------------------------------------------------------------------------
 # Written by Tim Edwards October 8-9, 2013
@@ -30,21 +31,29 @@
 
 if {$argc < 3} {
    puts stderr \
-	"Usage:  postproc.tcl mapped_blif_file root_modname variables_file"
+	"Usage:  postproc.tcl [-t tool] mapped_blif_file root_modname variables_file"
    exit 1
 }
 
 puts stdout "Postproc register initialization handling"
 
-set mbliffile [lindex $argv 0]
+if {[lindex $argv 0] == "-t"} {
+   set synthtool [lindex $argv 1]
+   set argfirst 2
+} else {
+   set synthtool yosys
+   set argfirst 0
+}
+
+set mbliffile [lindex $argv $argfirst]
 set cellname [file rootname $mbliffile]
 if {"$cellname" == "$mbliffile"} {
    set mbliffile ${cellname}.blif
 }
 
 set outfile ${cellname}_tmp.blif
-set rootname [lindex $argv 1]
-set varsfile [lindex $argv 2]
+set rootname [lindex $argv $argfirst+1]
+set varsfile [lindex $argv $argfirst+2]
 
 #-------------------------------------------------------------
 # Open files for read and write
@@ -89,6 +98,7 @@ proc readresets {prefix modname} {
    global floptypes
    global flopresetnet
    global resetlist
+   global synthtool
    global $prefix
 
    # puts stdout "readresets:  modname prefix is $prefix modname is $modname"
@@ -113,7 +123,15 @@ proc readresets {prefix modname} {
 	       set pinname [string range $line 0 $eidx-1]
 	       set pinvalue [string range $line $eidx+1 end]
 	       if [catch {set ${newprefix}($pinname) [subst \${${prefix}($pinvalue)}]}] {
-	          set ${newprefix}($pinname) ${prefix}^$pinvalue
+		  if {"$synthtool" == "yosys"} {
+		     if {"$prefix" == "top"} {
+	                set ${newprefix}($pinname) $pinvalue
+		     } else {
+	                set ${newprefix}($pinname) ${prefix}.$pinvalue
+		     }
+		  } else {
+	             set ${newprefix}($pinname) ${prefix}^$pinvalue
+		  }
 	       }
 	       set temp [subst \${${newprefix}($pinname)}]
 	       # puts stdout "  record pin: ${newprefix}($pinname) $temp"
@@ -121,7 +139,15 @@ proc readresets {prefix modname} {
 	    } else {
 	       set newinst [lindex $line 2]
 	       lappend instlist $newinst
-	       set newprefix ${prefix}.${newmodname}+${newinst}
+	       if {"$synthtool" == "yosys"} {
+		  if {"$prefix" == "top"} {
+	             set newprefix ${newinst}
+		  } else {
+	             set newprefix ${prefix}.${newinst}
+		  }
+	       } else {
+	          set newprefix ${prefix}.${newmodname}+${newinst}
+	       }
 	       global $newprefix
 	    }
          }
@@ -149,10 +175,26 @@ proc readresets {prefix modname} {
 	 if {$resettype == "input"} {
 	    # Value of reset net passed from above
 	    if [catch {set resetnode [subst \${${prefix}($resetnet)}]}] {
-	       set resetnode ${prefix}^${resetnet}
+	       if {"$synthtool" == "yosys"} {
+		  if {"$prefix" == "top"} {
+	             set resetnode ${resetnet}
+		  } else {
+	             set resetnode ${prefix}.${resetnet}
+		  }
+	       } else {
+	          set resetnode ${prefix}^${resetnet}
+	       }
 	    }
 	 } else {
-	    set resetnode ${prefix}^${resetnet}
+	    if {"$synthtool" == "yosys"} {
+	       if {"$prefix" == "top"} {
+	          set resetnode ${resetnet}
+	       } else {
+	          set resetnode ${prefix}.${resetnet}
+	       }
+	    } else {
+	       set resetnode ${prefix}^${resetnet}
+	    }
 	 }
 	 if {$rinvert == 1} {
 	    set resetnode not_$resetnode
@@ -163,7 +205,16 @@ proc readresets {prefix modname} {
 
       } elseif [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
 	 # Flop output is always a local node name, by Odin-II convention
-         lappend flopsigs ${prefix}^${signal}_FF_NODE
+	 # Yosys uses the original signal name from the verilog.
+	 if {"$synthtool" == "yosys"} {
+	    if {"$prefix" == "top"} {
+               lappend flopsigs ${signal}
+	    } else {
+               lappend flopsigs ${prefix}.${signal}
+	    }
+	 } else {
+            lappend flopsigs ${prefix}^${signal}_FF_NODE
+	 }
 	 if {$initcond == "0" || $initcond == "1"} {
             lappend floptypes $initcond
 	 } else {
@@ -191,6 +242,27 @@ set resetlist {}
 readresets top $rootname
 
 #-------------------------------------------------------------
+# Yosys first pass of the blif file
+# Look for all ".names x y" records and remember y as an
+# alias for x.
+#-------------------------------------------------------------
+
+if {"$synthtool" == "yosys"} {
+   while {[gets $bnet line] >= 0} {
+      set line [string map {\[ \< \] \>} $line]
+      if [regexp {^.names[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]*$} $line lmatch signame sigalias] {
+	 # Technically, should check if the next line is "1 1" but I don't think there are
+	 # any exceptions in yosys output.
+	 if [catch {set ${signame}(alias)}] {
+	    set ${signame}(alias) {}
+	 }
+	 lappend ${signame}(alias) $sigalias
+      }
+   }
+   seek $bnet 0
+}
+
+#-------------------------------------------------------------
 # Now post-process the blif file
 # The main thing to remember is that internal signals will be
 # outputs of flops, but external pin names have to be translated
@@ -199,7 +271,10 @@ readresets top $rootname
 
 set cycle 0
 while {[gets $bnet line] >= 0} {
+   set line [string map {\[ \< \] \> \.subckt \.gate} $line]
    if [regexp {^.gate} $line lmatch] {
+      break
+   } elseif [regexp {^.names} $line lmatch] {
       break
    } elseif [regexp {^.latch} $line lmatch] {
       break
@@ -229,6 +304,16 @@ while {1} {
 		$line lmatch dname qname cpname] {
        set srnames ""
        set idx [lsearch $flopsigs $qname]
+       if {$idx < 0} {
+	  if {![catch {set alist [subst \${${qname}(alias)}]}]} {
+	     foreach alias $alist {
+		set idx [lsearch $flopsigs $alias]
+		if {$idx >= 0} {
+		   break
+		}
+	     }
+	  }
+       }
        if {$idx >= 0} {
 	  set flopt [lindex $floptypes $idx]
 	  set resetnet [lindex $flopresetnet $idx]
@@ -301,7 +386,25 @@ while {1} {
        puts $onet "$gname ${floppinin}=$dname ${floppinclk}=$cpname $srnames ${floppinout}=$qname"
 
    } else {
-       puts $onet $line
+
+       # All lines starting with ".names" are converted into buffers.  These should be
+       # pruned. . . 
+
+       if [regexp {^.names} $line lmatch] {
+	  if {![regexp {\$false$} $line lmatch]} {
+             set line [string map [subst {\\\$false $gndnet \\\$true $vddnet}] $line]
+	     if [regexp {^.names[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]*$} $line lmatch sigin sigout] {
+	        puts $onet ".gate ${bufcell} ${bufpin_in}=${sigin} ${bufpin_out}=${sigout}"
+	     }
+	     gets $bnet line
+	  }
+       } else {
+          puts $onet $line
+       }
+       if [regexp {^.end} $line lmatch] break
    }
    if {[gets $bnet line] < 0} break
+   set line [string map {\[ \< \] \> \.subckt \.gate} $line]
 }
+
+close $bnet

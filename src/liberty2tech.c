@@ -50,8 +50,8 @@ typedef struct _lutable {
     char *var2;		// Name of array in index2
     int  tsize;		// Number of entries in time array
     int  csize;		// Number of entries in cap array
-    double *times;	// Time array
-    double *caps;	// Cap array
+    double *times;	// Time array (units fF)
+    double *caps;	// Cap array (units ps)
     lutableptr next;
 } lutable;
 
@@ -62,6 +62,7 @@ typedef struct _pin {
     int	type;
     double cap;
     double maxtrans;
+    double maxcap;
     pinptr next;
 } pin;
 
@@ -485,6 +486,9 @@ main(int objc, char *argv[])
     lutable *tables = NULL;
     cell *cells = NULL;
 
+    double time_unit = 1.0;	// Time unit multiplier, to get ps
+    double cap_unit = 1.0;	// Capacitive unit multiplier, to get fF
+
     int i, j;
     double gval;
     char *iptr;
@@ -611,11 +615,13 @@ main(int objc, char *argv[])
 				newtable->csize = 0;
 				iptr = token;
 				sscanf(iptr, "%lg", &newtable->caps[0]);
+				newtable->caps[0] *= cap_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    newtable->csize++;
 				    sscanf(iptr, "%lg",
 						&newtable->caps[newtable->csize]);
+				    newtable->caps[newtable->csize] *= cap_unit;
 				}
 				newtable->csize++;
 			    }
@@ -632,11 +638,13 @@ main(int objc, char *argv[])
 				newtable->tsize = 0;
 				iptr = token;
 				sscanf(iptr, "%lg", &newtable->times[0]);
+				newtable->times[0] *= time_unit; 
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    newtable->tsize++;
 				    sscanf(iptr, "%lg",
 						&newtable->times[newtable->tsize]);
+				    newtable->times[newtable->tsize] *= time_unit;
 				}
 				newtable->tsize++;
 			    }
@@ -662,11 +670,13 @@ main(int objc, char *argv[])
 				newtable->csize = 0;
 				iptr = token;
 				sscanf(iptr, "%lg", &newtable->caps[0]);
+				newtable->caps[0] *= cap_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    newtable->csize++;
 				    sscanf(iptr, "%lg",
 						&newtable->caps[newtable->csize]);
+				    newtable->caps[newtable->csize] *= cap_unit;
 				}
 				newtable->csize++;
 			    }
@@ -683,11 +693,13 @@ main(int objc, char *argv[])
 				newtable->tsize = 0;
 				iptr = token;
 				sscanf(iptr, "%lg", &newtable->times[0]);
+				newtable->times[0] *= time_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    newtable->tsize++;
 				    sscanf(iptr, "%lg",
 						&newtable->times[newtable->tsize]);
+				    newtable->times[newtable->tsize] *= time_unit;
 				}
 				newtable->tsize++;
 			    }
@@ -722,6 +734,89 @@ main(int objc, char *argv[])
 		    newcell->values = NULL;
 		    lastpin = NULL;
 		    section = CELLDEF;
+		}
+		else if (!strcasecmp(token, "time_unit")) {
+		   char *metric;
+
+		   token = advancetoken(flib, 0);
+		   if (token == NULL) break;
+		   if (!strcmp(token, ":")) {
+		      token = advancetoken(flib, 0);
+		      if (token == NULL) break;
+		   }
+		   if (!strcmp(token, "\"")) {
+		      token = advancetoken(flib, '\"');
+		      if (token == NULL) break;
+		   }
+		   time_unit = strtod(token, &metric);
+		   if (*metric != '\0') {
+		      if (!strcmp(metric, "ns"))
+			 time_unit *= 1E3;
+		      else if (!strcmp(metric, "us"))
+			 time_unit *= 1E6;
+		      else if (!strcmp(metric, "fs"))
+			 time_unit *= 1E-3;
+		      else if (strcmp(metric, "ps"))
+			 fprintf(stderr, "Don't understand time units \"%s\"\n",
+				token);
+		   }
+		   else {
+		      token = advancetoken(flib, 0);
+		      if (token == NULL) break;
+		      if (!strcmp(token, "ns"))
+			 time_unit *= 1E3;
+		      else if (!strcmp(token, "us"))
+			 time_unit *= 1E6;
+		      else if (!strcmp(token, "fs"))
+			 time_unit *= 1E-3;
+		      else if (strcmp(token, "ps"))
+			 fprintf(stderr, "Don't understand time units \"%s\"\n",
+				token);
+		   }
+		   token = advancetoken(flib, ';');
+		}
+		else if (!strcasecmp(token, "capacitive_load_unit")) {
+		   char *metric;
+
+		   token = advancetoken(flib, 0);
+		   if (token == NULL) break;
+		   if (!strcmp(token, "(")) {
+		      token = advancetoken(flib, ')');
+		      if (token == NULL) break;
+		   }
+		   cap_unit = strtod(token, &metric);
+		   if (*metric != '\0') {
+		      while (isspace(*metric)) metric++;
+		      if (*metric == ',') metric++;
+		      while ((*metric != '\0') && isspace(*metric)) metric++;
+		      if (!strcasecmp(metric, "af"))
+			 cap_unit *= 1E-3;
+		      else if (!strcasecmp(metric, "pf"))
+			 cap_unit *= 1000;
+		      else if (!strcasecmp(metric, "nf"))
+			 cap_unit *= 1E6;
+		      else if (!strcasecmp(metric, "uf"))
+			 cap_unit *= 1E9;
+		      else if (strcasecmp(metric, "ff"))
+			 fprintf(stderr, "Don't understand capacitive units \"%s\"\n",
+				token);
+		   }
+		   else {
+		      token = advancetoken(flib, 0);
+		      if (token == NULL) break;
+		      if (!strcasecmp(token, "af"))
+			 cap_unit *= 1E-3;
+		      else if (!strcasecmp(token, "pf"))
+			 cap_unit *= 1000;
+		      else if (!strcasecmp(token, "nf"))
+			 cap_unit *= 1E6;
+		      else if (!strcasecmp(token, "uf"))
+			 cap_unit *= 1E9;
+		      else if (strcasecmp(token, "ff"))
+			 fprintf(stderr, "Don't understand capacitive units \"%s\"\n",
+				token);
+		   }
+		   token = advancetoken(flib, ';');
 		}
 		else {
 		    // For unhandled tokens, read in tokens.  If it is
@@ -765,7 +860,8 @@ main(int objc, char *argv[])
 			fprintf(stderr, "Error: failed to find start of block\n");
 		    newpin->type = UNKNOWN;
 		    newpin->cap = 0.0;
-		    newpin->maxtrans = 1.0;
+		    newpin->maxcap = 0.0;
+		    newpin->maxtrans = 0.0;
 		    section = PINDEF;
 		}		
 		else if (!strcasecmp(token, "area")) {
@@ -800,6 +896,7 @@ main(int objc, char *argv[])
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// To end-of-statement
 		    sscanf(token, "%lg", &newpin->cap);
+		    newpin->cap *= cap_unit;
 		}
 		else if (!strcasecmp(token, "function")) {
 		    token = advancetoken(flib, 0);	// Colon
@@ -828,6 +925,13 @@ main(int objc, char *argv[])
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// To end-of-statement
 		    sscanf(token, "%lg", &newpin->maxtrans);
+		    newpin->maxtrans *= time_unit;
+		}
+		else if (!strcasecmp(token, "max_capacitance")) {
+		    token = advancetoken(flib, 0);	// Colon
+		    token = advancetoken(flib, ';');	// To end-of-statement
+		    sscanf(token, "%lg", &newpin->maxcap);
+		    newpin->maxcap *= cap_unit;
 		}
 		else if (!strcasecmp(token, "timing")) {
 		    token = advancetoken(flib, 0);	// Arguments, if any
@@ -903,10 +1007,12 @@ main(int objc, char *argv[])
 				newcell->caps = (double *)malloc(reftable->csize *
 					sizeof(double));
 				sscanf(iptr, "%lg", &newcell->caps[0]);
+				newcell->caps[0] *= cap_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    i++;
 				    sscanf(iptr, "%lg", &newcell->caps[i]);
+				    newcell->caps[i] *= cap_unit;
 				}
 			    }
 			    else if (reftable && (reftable->invert == 0)) {
@@ -915,10 +1021,12 @@ main(int objc, char *argv[])
 				newcell->times = (double *)malloc(reftable->tsize *
 					sizeof(double));
 				sscanf(iptr, "%lg", &newcell->times[0]);
+				newcell->times[0] *= time_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    i++;
 				    sscanf(iptr, "%lg", &newcell->times[i]);
+				    newcell->times[i] *= time_unit;
 				}
 			    }
 
@@ -943,10 +1051,12 @@ main(int objc, char *argv[])
 				newcell->times = (double *)malloc(reftable->tsize *
 					sizeof(double));
 				sscanf(iptr, "%lg", &newcell->times[0]);
+				newcell->times[0] *= time_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    i++;
 				    sscanf(iptr, "%lg", &newcell->times[i]);
+				    newcell->times[i] *= time_unit;
 				}
 			    }
 			    else if (reftable && (reftable->invert == 0)) {
@@ -955,10 +1065,12 @@ main(int objc, char *argv[])
 				newcell->caps = (double *)malloc(reftable->csize *
 					sizeof(double));
 				sscanf(iptr, "%lg", &newcell->caps[0]);
+				newcell->caps[0] *= cap_unit;
 				while ((iptr = strchr(iptr, ',')) != NULL) {
 				    iptr++;
 				    i++;
 				    sscanf(iptr, "%lg", &newcell->caps[i]);
+				    newcell->caps[i] *= cap_unit;
 				}
 			    }
 
@@ -987,7 +1099,7 @@ main(int objc, char *argv[])
 						iptr++;
 					    sscanf(iptr, "%lg", &gval);
 					    *(newcell->values + j * reftable->tsize
-							+ i) = gval;
+							+ i) = gval * time_unit;
 					    while (*iptr != ' ' && *iptr != '\"' &&
 							*iptr != ',')
 						iptr++;
@@ -1005,7 +1117,7 @@ main(int objc, char *argv[])
 						iptr++;
 					    sscanf(iptr, "%lg", &gval);
 					    *(newcell->values + j * reftable->tsize
-							+ i) = gval;
+							+ i) = gval * time_unit;
 					    while (*iptr != ' ' && *iptr != '\"' &&
 							*iptr != ',')
 						iptr++;
@@ -1136,17 +1248,17 @@ main(int objc, char *argv[])
 	mintrise = *newcell->values;
 	maxtrise = *(newcell->values + newcell->reftable->csize - 1);
 
-	// Calculate delay per load.  Note that cap is typically in
-	// pF (we should confirm this!) but we want fF.
+	// Calculate delay per load.  Note that cap at this point should be
+	// in fF, and trise should be in ps.
 	// So the value of loaddelay is in ps/fF.
-	loaddelay = (maxtrise - mintrise) / (1000 * (maxcap - mincap));
+	loaddelay = (maxtrise - mintrise) / (maxcap - mincap);
 	newcell->slope = loaddelay;
 	newcell->mintrans = mintrise;
 
 	// Calculate internal capacitance
 	// risetime is ps, so (risetime / loaddelay) is fF.
-	// mincap is in pF, so multiply by 1000 to get fF
-	intcap = (mintrise / loaddelay) - (1000.0 * mincap);
+	// mincap is in fF.
+	intcap = (mintrise / loaddelay) - mincap;
 
 	// Print out all values so far.
 	fprintf(fcfg, "%s  %g %d %g  ", newcell->name, loaddelay,
@@ -1156,7 +1268,7 @@ main(int objc, char *argv[])
 
 	for (newpin = newcell->pins; newpin; newpin = newpin->next) {
 	    if (newpin->type == INPUT)
-		fprintf(fcfg, " %g", 1000 * newpin->cap);
+		fprintf(fcfg, " %g", newpin->cap);
 	}
 	fprintf(fcfg, "\n");
     }
@@ -1202,13 +1314,40 @@ main(int objc, char *argv[])
 	/* Units are:  cap in pF, maxload in pF, risetime in ns,	*/
 	/* slope in ns/pF, falltime in ns, slope in ns/pF.		*/
 
+
 	for (newpin = newcell->pins; newpin; newpin = newpin->next) {
+	    if (newpin->maxcap == 0.0) {
+		if (newpin->maxtrans != 0.0)
+		    newpin->maxcap = (newpin->maxtrans / newcell->slope);
+		else { 
+		    pin *testpin;
+
+		    // If any pin has maximum capacitance information, use that.
+		    for (testpin = newpin->next; testpin; testpin = testpin->next)
+			if (testpin->maxcap != 0.0)
+			    newpin->maxcap = testpin->maxcap;
+
+		    // If any pin has maximum transition information, use that.
+		    if (newpin->maxcap == 0.0) {
+			for (testpin = newpin->next; testpin; testpin = testpin->next)
+			    if (testpin->maxtrans != 0.0)
+				newpin->maxcap = (testpin->maxtrans / newcell->slope);
+		    }
+
+		    // No information on maximum load at all?  Ad hoc rule,
+		    // use 24 * cap value of 1st pin;  e.g., a load of about
+		    // 24 gates.
+		    if (newpin->maxcap == 0.0)
+			newpin->maxcap = 24 * newcell->pins->cap;
+		}
+	    }
+
 	    if (newpin->type == INPUT)
 		fprintf(fgen, "   PIN %s %s %g %g %g %g %g %g\n",
-			newpin->name, "UNKNOWN", newpin->cap,
-			newpin->maxtrans / (1000.0 * newcell->slope),
-			newcell->mintrans / 1000.0, newcell->slope,
-			newcell->mintrans / 1000.0, newcell->slope);
+			newpin->name, "UNKNOWN", (newpin->cap / 1000.0),
+			(newpin->maxcap / 1000.0),
+			(newcell->mintrans / 1000.0), newcell->slope,
+			(newcell->mintrans / 1000.0), newcell->slope);
 	}
 	fprintf(fgen, "\n");
     }

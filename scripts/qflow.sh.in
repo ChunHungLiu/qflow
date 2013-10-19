@@ -30,6 +30,14 @@ if ( $tech == "" ) then
    endif
 endif
 
+# For the moment, odin_ii is the default sythesis tool.  Use
+# option "-t yosys" to use yosys instead.
+
+set tool=`printenv QFLOW_SYNTHESIS_TOOL`
+if ( $tool == "" ) then
+   set tool="odin"
+endif
+
 # Environment variable overrides the project root path in all cases
 # except when the project root path is specified on the command line
 # by -p.  If the environment variable does not exist, the project
@@ -61,6 +69,12 @@ while ($#argv > 0)
 	 shift
 	 set tech=$argv[1]
 	 set has_tech=0
+	 shift
+	 breaksw
+      case -t:
+      case --tool:
+	 shift
+	 set tool=$argv[1]
 	 shift
 	 breaksw
       case -p:
@@ -147,6 +161,7 @@ if ($dohelp == 1 || $#argv != 0) then
    echo ""
    echo "Options:    -T, --tech <name>		Use technology <name>"
    echo "	     -p, --project <name>	Project root directory is <name>"
+   echo "	     -t, --tool <name>		Use synthesis tool <name>"
    if ($dohelp == 1) then
       exit 0
    else
@@ -222,6 +237,7 @@ echo "#-------------------------------------------" >> ${varfile}
 echo "" >> ${varfile}
 
 echo "set projectpath=${projectpath}" >> ${varfile}
+echo "set synthtool=${tool}" >> ${varfile}
 echo "set techdir=${techdir}" >> ${varfile}
 echo "set sourcedir=${sourcedir}" >> ${varfile}
 echo "set synthdir=${synthdir}" >> ${varfile}
@@ -258,6 +274,7 @@ if ( ! -f ${userfile} ) then
    echo "# Synthesis command options:" >> ${userfile}
    echo "# -------------------------------------------" >> ${userfile}
    echo "# set vpp_options = " >> ${userfile}
+   echo "# set yosys_options = " >> ${userfile}
    echo "# set odin_options = " >> ${userfile}
    echo "# set abc_options = " >> ${userfile}
    echo "# set abc_script = " >> ${userfile}

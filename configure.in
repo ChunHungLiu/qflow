@@ -105,6 +105,23 @@ AC_ARG_WITH(timberwolf,
 AC_DEFINE_UNQUOTED(QFLOW_TWRC_PATH, "$QFLOW_TWRC_PATH")
 QFLOW_TW_PATH=${ac_cv_path_QFLOW_TWRC_PATH%/.twrc}
 
+dnl Path to yosys
+
+AC_ARG_WITH(yosys,
+[  --with-yosys=DIR		path to yosys], [
+   if test -d "$withval"; then
+      QFLOW_YOSYS_DIR=$withval
+   elif test -f "$withval"; then
+      # Path includes "/yosys";  remove it
+      QFLOW_YOSYS_DIR=${withval%/yosys}
+   else
+      QFLOW_YOSYS_DIR=${PATH}
+   fi
+   AC_PATH_PROG(QFLOW_YOSYS_PATH, yosys, , $QFLOW_YOSYS_DIR)
+], [
+   AC_PATH_PROG(QFLOW_YOSYS_PATH, yosys, , )])
+AC_DEFINE_UNQUOTED(QFLOW_YOSYS_PATH, "$QFLOW_YOSYS_PATH")
+
 dnl Path to vtr: Simpler alternative to specifying path for abc and Odin_II
 
 AC_ARG_WITH(vtr,
@@ -174,6 +191,7 @@ AC_ARG_WITH(bindir,
 ])
 
 dnl AC_SUBST(QFLOW_QROUTER_PATH)
+dnl AC_SUBST(QFLOW_YOSYS_PATH)
 dnl AC_SUBST(QFLOW_MAGIC_PATH)
 dnl AC_SUBST(QFLOW_TWRC_PATH)
 dnl AC_SUBST(QFLOW_ABC_PATH)
@@ -189,6 +207,28 @@ AC_SUBST(CFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(LD)
 AC_SUBST(STDLIBS)
+
+if test "x${ac_cv_path_QFLOW_YOSYS_PATH}" == "x"; then
+   HAVE_YOSYS=0
+else
+   HAVE_YOSYS=1
+fi
+
+if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+   HAVE_ODIN_II=0
+else
+   HAVE_ODIN_II=1
+fi
+
+if test "x${ac_cv_path_QFLOW_ABC_PATH}" == "x"; then
+   HAVE_ABC=0
+else
+   HAVE_ABC=1
+fi
+
+AC_SUBST(HAVE_ABC)
+AC_SUBST(HAVE_YOSYS)
+AC_SUBST(HAVE_ODIN_II)
 
 AC_OUTPUT(Makefile scripts/Makefile src/Makefile tech/Makefile tech/osu035/Makefile tech/osu050/Makefile)
 
@@ -209,14 +249,26 @@ else
    echo "Using qrouter detail route tool at: ${ac_cv_path_QFLOW_QROUTER_PATH}"
 fi
 
+if test "x${ac_cv_path_QFLOW_YOSYS_PATH}" == "x"; then
+   if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
+      echo "ERROR: yosys not found.  Use --with-yosys=<DIR>"
+   fi
+else
+   echo "Using yosys verilog synthesis tool at: ${ac_cv_path_QFLOW_YOSYS_PATH}"
+fi
+
 if test "x${ac_cv_path_QFLOW_ODIN_PATH}" == "x"; then
-   echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
+   if test "x${ac_cv_path_QFLOW_YOSYS_PATH}" == "x"; then
+      echo "ERROR: odin_II not found.  Use --with-odin_II=<DIR>"
+   fi
 else
    echo "Using odin_II verilog parsing tool at: ${ac_cv_path_QFLOW_ODIN_PATH}"
 fi
 
 if test "x${ac_cv_path_QFLOW_ABC_PATH}" == "x"; then
-   echo "ERROR: ABC not found.  Use --with-abc=<DIR>"
+   if test "x${ac_cv_path_QFLOW_YOSYS_PATH}" == "x"; then
+      echo "ERROR: ABC not found.  Use --with-abc=<DIR>"
+   fi
 else
    echo "Using ABC logic optimization tool at: ${ac_cv_path_QFLOW_ABC_PATH}"
 fi
@@ -228,3 +280,4 @@ else
 fi
 
 echo "----------------------------------------------------"
+

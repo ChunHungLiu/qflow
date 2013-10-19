@@ -12,6 +12,10 @@ set leffile=osu035_stdcells.lef
 
 set spicefile=osu035_stdcells.sp
 
+# The liberty format file containing standard cell timing and function information
+
+set libertyfile=osu035_stdcells.lib
+
 # If there is another LEF file containing technology information
 # that is separate from the file containing standard cell macros,
 # set this.  Otherwise, leave it defined as an empty string.

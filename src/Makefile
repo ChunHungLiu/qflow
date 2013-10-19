@@ -4,7 +4,7 @@
 
 # Main compiler arguments
 CFLAGS = -g -O2
-DEFS = -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SETENV=1 -DHAVE_PUTENV=1 -DTCLSH_PATH=\"tclsh\" -DQFLOW_MAGIC_PATH=\"/usr/local/bin/magic\" -DQFLOW_QROUTER_PATH=\"/usr/local/bin/qrouter\" -DQFLOW_TWRC_PATH=\"/home/tim/src/timberwolf-6.3/.twrc\" -DQFLOW_ODIN_PATH=\"/home/tim/src/vtr/ODIN_II/odin_II.exe\" -DQFLOW_ABC_PATH=\"/home/tim/src/vtr/abc_with_bb_support/abc\"
+DEFS = -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SETENV=1 -DHAVE_PUTENV=1 -DTCLSH_PATH=\"tclsh\" -DQFLOW_MAGIC_PATH=\"/usr/local/bin/magic\" -DQFLOW_QROUTER_PATH=\"/usr/local/bin/qrouter\" -DQFLOW_TWRC_PATH=\"/home/tim/src/timberwolf-6.3/.twrc\" -DQFLOW_YOSYS_PATH=\"/home/tim/src/yosys/yosys\" -DQFLOW_ODIN_PATH=\"/home/tim/src/vtr/ODIN_II/odin_II.exe\" -DQFLOW_ABC_PATH=\"/home/tim/src/vtr/abc_with_bb_support/abc\"
 LIBS = 
 LDFLAGS = 
 INSTALL = /usr/bin/install -c
@@ -15,6 +15,11 @@ QFLOW_QROUTER_PATH = /usr/local/bin/qrouter
 QFLOW_ABC_PATH = /home/tim/src/vtr/abc_with_bb_support/abc
 QFLOW_ODIN_PATH = /home/tim/src/vtr/ODIN_II/odin_II.exe
 QFLOW_MAGIC_PATH = /usr/local/bin/magic
+QFLOW_YOSYS_PATH = /home/tim/src/yosys/yosys
+
+HAVE_ABC = 1
+HAVE_YOSYS = 1
+HAVE_ODIN_II = 1
 
 OBJECTS = AddIO2blif.o blif2BSpice.o blif2Verilog.o blifFanout.o
 OBJECTS += verilogpp.o dcombine.o liberty2tech.o
@@ -55,9 +60,16 @@ install: $(TARGETS)
 	@echo "Installing links to TimberWolf, qrouter, odin_ii, and abc"
 	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s $(QFLOW_TW_PATH) twdir)
 	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
-	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc)
-	(cd ${BININSTALL};  $(RM) -f odin_ii;  ln -s $(QFLOW_ODIN_PATH) odin_ii)
+	@if test "${HAVE_ABC}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc); \
+	fi
+	@if test "${HAVE_ODIN_II}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f odin_ii;  ln -s $(QFLOW_ODIN_PATH) odin_ii); \
+	fi
 	(cd ${BININSTALL};  $(RM) -f magic;  ln -s $(QFLOW_MAGIC_PATH) magic)
+	@if test "${HAVE_YOSYS}" = "1"; then \
+	(cd ${BININSTALL};  $(RM) -f yosys;  ln -s $(QFLOW_YOSYS_PATH) yosys); \
+	fi
 
 uninstall:
 	$(RM) -rf ${BININSTALL}

@@ -13,7 +13,7 @@ QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
 
 TECH_FILES = osu035.genlib osu035.super osu035.par osu035_stdcells.lef
 TECH_FILES += osu035.sh osu035_stdcells.sp osu035.magicrc osu035.prm
-TECH_FILES += gate.cfg SCN4M_SUBM.20.tech
+TECH_FILES += gate.cfg SCN4M_SUBM.20.tech osu035_stdcells.lib
 
 TECHINSTALL = ${QFLOW_LIB_DIR}/tech
 

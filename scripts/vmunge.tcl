@@ -126,7 +126,9 @@ while {[gets $vnet line] >= 0} {
 	puts -nonewline $vtmp "module "
 	set line $rest
     } else {
-	puts $vtmp $line
+	if {$inmodule == 0} {
+	    puts $vtmp $line
+	}
     }
 
     if {$inmodule == 1} {
