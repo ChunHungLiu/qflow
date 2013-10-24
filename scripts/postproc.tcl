@@ -31,29 +31,21 @@
 
 if {$argc < 3} {
    puts stderr \
-	"Usage:  postproc.tcl [-t tool] mapped_blif_file root_modname variables_file"
+	"Usage:  postproc.tcl mapped_blif_file root_modname variables_file"
    exit 1
 }
 
 puts stdout "Postproc register initialization handling"
 
-if {[lindex $argv 0] == "-t"} {
-   set synthtool [lindex $argv 1]
-   set argfirst 2
-} else {
-   set synthtool yosys
-   set argfirst 0
-}
-
-set mbliffile [lindex $argv $argfirst]
+set mbliffile [lindex $argv 0]
 set cellname [file rootname $mbliffile]
 if {"$cellname" == "$mbliffile"} {
    set mbliffile ${cellname}.blif
 }
 
 set outfile ${cellname}_tmp.blif
-set rootname [lindex $argv $argfirst+1]
-set varsfile [lindex $argv $argfirst+2]
+set rootname [lindex $argv 1]
+set varsfile [lindex $argv 2]
 
 #-------------------------------------------------------------
 # Open files for read and write
@@ -123,15 +115,7 @@ proc readresets {prefix modname} {
 	       set pinname [string range $line 0 $eidx-1]
 	       set pinvalue [string range $line $eidx+1 end]
 	       if [catch {set ${newprefix}($pinname) [subst \${${prefix}($pinvalue)}]}] {
-		  if {"$synthtool" == "yosys"} {
-		     if {"$prefix" == "top"} {
-	                set ${newprefix}($pinname) $pinvalue
-		     } else {
-	                set ${newprefix}($pinname) ${prefix}.$pinvalue
-		     }
-		  } else {
-	             set ${newprefix}($pinname) ${prefix}^$pinvalue
-		  }
+	          set ${newprefix}($pinname) ${prefix}^$pinvalue
 	       }
 	       set temp [subst \${${newprefix}($pinname)}]
 	       # puts stdout "  record pin: ${newprefix}($pinname) $temp"
@@ -139,15 +123,7 @@ proc readresets {prefix modname} {
 	    } else {
 	       set newinst [lindex $line 2]
 	       lappend instlist $newinst
-	       if {"$synthtool" == "yosys"} {
-		  if {"$prefix" == "top"} {
-	             set newprefix ${newinst}
-		  } else {
-	             set newprefix ${prefix}.${newinst}
-		  }
-	       } else {
-	          set newprefix ${prefix}.${newmodname}+${newinst}
-	       }
+	       set newprefix ${prefix}.${newmodname}+${newinst}
 	       global $newprefix
 	    }
          }
@@ -175,26 +151,10 @@ proc readresets {prefix modname} {
 	 if {$resettype == "input"} {
 	    # Value of reset net passed from above
 	    if [catch {set resetnode [subst \${${prefix}($resetnet)}]}] {
-	       if {"$synthtool" == "yosys"} {
-		  if {"$prefix" == "top"} {
-	             set resetnode ${resetnet}
-		  } else {
-	             set resetnode ${prefix}.${resetnet}
-		  }
-	       } else {
-	          set resetnode ${prefix}^${resetnet}
-	       }
-	    }
-	 } else {
-	    if {"$synthtool" == "yosys"} {
-	       if {"$prefix" == "top"} {
-	          set resetnode ${resetnet}
-	       } else {
-	          set resetnode ${prefix}.${resetnet}
-	       }
-	    } else {
 	       set resetnode ${prefix}^${resetnet}
 	    }
+	 } else {
+	    set resetnode ${prefix}^${resetnet}
 	 }
 	 if {$rinvert == 1} {
 	    set resetnode not_$resetnode
@@ -205,16 +165,7 @@ proc readresets {prefix modname} {
 
       } elseif [regexp {^([^ \t]+)[ \t]+([^ \t]+)} $line lmatch signal initcond] {
 	 # Flop output is always a local node name, by Odin-II convention
-	 # Yosys uses the original signal name from the verilog.
-	 if {"$synthtool" == "yosys"} {
-	    if {"$prefix" == "top"} {
-               lappend flopsigs ${signal}
-	    } else {
-               lappend flopsigs ${prefix}.${signal}
-	    }
-	 } else {
-            lappend flopsigs ${prefix}^${signal}_FF_NODE
-	 }
+         lappend flopsigs ${prefix}^${signal}_FF_NODE
 	 if {$initcond == "0" || $initcond == "1"} {
             lappend floptypes $initcond
 	 } else {
@@ -240,27 +191,6 @@ set flopresetnet {}
 set resetlist {}
 
 readresets top $rootname
-
-#-------------------------------------------------------------
-# Yosys first pass of the blif file
-# Look for all ".names x y" records and remember y as an
-# alias for x.
-#-------------------------------------------------------------
-
-if {"$synthtool" == "yosys"} {
-   while {[gets $bnet line] >= 0} {
-      set line [string map {\[ \< \] \>} $line]
-      if [regexp {^.names[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]*$} $line lmatch signame sigalias] {
-	 # Technically, should check if the next line is "1 1" but I don't think there are
-	 # any exceptions in yosys output.
-	 if [catch {set ${signame}(alias)}] {
-	    set ${signame}(alias) {}
-	 }
-	 lappend ${signame}(alias) $sigalias
-      }
-   }
-   seek $bnet 0
-}
 
 #-------------------------------------------------------------
 # Now post-process the blif file

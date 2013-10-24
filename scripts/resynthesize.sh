@@ -156,10 +156,10 @@ echo "   Spice:   ${synthdir}/${rootname}.spc" |& tee -a ${synthlog}
 echo "" |& tee -a ${synthlog}
 
 echo "Running blif2Verilog." |& tee -a ${synthlog}
-${bindir}/blif2Verilog -v ${vddnet} -g ${gndnet} ${rootname}.blif \
+${bindir}/blif2Verilog -c -v ${vddnet} -g ${gndnet} ${rootname}.blif \
 	> ${rootname}.rtl.v
 
-${bindir}/blif2Verilog -p ${rootname}.blif > ${rootname}.rtlnopwr.v
+${bindir}/blif2Verilog -c -p ${rootname}.blif > ${rootname}.rtlnopwr.v
 
 echo "Running blif2BSpice." |& tee -a ${synthlog}
 ${bindir}/blif2BSpice ${rootname}.blif -p ${vddnet} -g ${gndnet} \

@@ -24,12 +24,9 @@
 #define FALSE		0
 #define NMOS		1
 #define PMOS		0
-// These should really be allocated---need to rewrite!
+
+#define LengthOfLine    	16384
 #define LengthOfNodeName  	512
-#define LengthOfLine    	512
-#define MaxNumberOfInputs 	512
-#define MaxNumberOfOutputs 	512
-#define NumberOfUniqueConnections 6
 
 /* getopt stuff */
 extern	int	optind, getopt();
@@ -60,24 +57,24 @@ typedef struct _subcircuit {
    subcircuitp next; 
    char *name;
    portrecp ports;
+   int gatecount;
 } subcircuit;
 
 //--------------------------------------------------------
 
 int main (int argc, char *argv[])
 {
-    FILE *NET1, *NET2 = NULL, *outfile;
-    struct Resistor *ResistorData;
-    int i, AllMatched, NetsEqual;
+    FILE *NET1 = NULL;
+    FILE *NET2 = NULL;
+    FILE *outfile;
+    int i;
 
-    char Net1name[LengthOfNodeName];
-    char Net2name[LengthOfNodeName];
+    char *Net1name = NULL;
+    char *Net2name = NULL;
 
     char *vddnet = NULL;
     char *gndnet = NULL;
     char *subnet = NULL;
-
-    Net2name[0] = '\0';
 
     // Use implicit power if power and ground nodes are global in SPICE
     // Otherwise, use "-p".
@@ -94,7 +91,7 @@ int main (int argc, char *argv[])
 	       subnet = strdup(optarg);
 	       break;
 	   case 'l':
-	       strcpy(Net2name,optarg);
+	       Net2name = strdup(optarg);
 	       break;
 	   case 'h':
 	   case 'H':
@@ -108,7 +105,7 @@ int main (int argc, char *argv[])
     }
 
     if (optind < argc) {
-        strcpy(Net1name, argv[optind]);
+	Net1name = strdup(argv[optind]);
 	optind++;
     }
     else {
@@ -116,13 +113,15 @@ int main (int argc, char *argv[])
 	exit(EXIT_FAILURE);
     }
     optind++;
-    NET1 = fopen(Net1name,"r");
+
+    if (Net1name)
+	NET1 = fopen(Net1name,"r");
     if (NET1 == NULL) {
-	fprintf(stderr,"Couldn't open %s for reading\n",Net1name);
+	fprintf(stderr, "Couldn't open %s for reading\n", Net1name);
 	exit(EXIT_FAILURE);
     }
 
-    if (Net2name[0] != '\0') {
+    if (Net2name) {
 	NET2 = fopen(Net2name, "r");
 	if (NET2 == NULL)
 	    fprintf(stderr, "Couldn't open %s for reading\n", Net2name);
@@ -144,18 +143,17 @@ int main (int argc, char *argv[])
 void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile, 
 		char *vddnet, char *gndnet, char *subnet)
 {
-	int i,Found,NumberOfInputs,NumberOfOutputs,NumberOfInstances;
+	int i, NumberOfInputs, NumberOfOutputs;
 
-	float length, width, Value;
-
-	char *node2pnt,*lengthpnt,*widthpnt,*FirstblankafterNode2, *lptr;
+	char *lptr;
         char line[LengthOfLine];
-	char InputName[LengthOfNodeName], OutputName[LengthOfNodeName];
-        char MainSubcktName[LengthOfNodeName],node1[LengthOfNodeName];
-	char InstanceName[LengthOfNodeName],InstancePortName[LengthOfNodeName];
+
+	char InputName[LengthOfNodeName];
+	char OutputName[LengthOfNodeName];
+        char MainSubcktName[LengthOfNodeName];
+	char InstanceName[LengthOfNodeName];
+	char InstancePortName[LengthOfNodeName];
 	char InstancePortWire[LengthOfNodeName];
-        char node2[LengthOfNodeName],nodelabel[LengthOfNodeName];
-        char body[LengthOfNodeName],model[LengthOfNodeName];
 
 	subcircuitp subcktlib = NULL, tsub;
 	portrecp tport;
@@ -194,6 +192,7 @@ void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile,
 		   newsubckt->next = subcktlib;
 		   subcktlib = newsubckt;
 		   newsubckt->ports = NULL;
+		   newsubckt->gatecount = 0;
 
 		   sp = sp2 + 1;
 		   while (isspace(*sp) && (*sp != '\n') && (*sp != '\0')) sp++;
@@ -267,7 +266,6 @@ void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile,
 
 	/* Read in line by line */
 
-	NumberOfInstances = 0;
         while (loc_getline(line, sizeof(line), netfile) > 0 ) {
 	   if (strstr(line, ".model") != NULL ) {
               if (sscanf(line, ".model %s", MainSubcktName) == 1) {
@@ -330,7 +328,7 @@ void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile,
 	      while (!isspace(*lptr)) lptr++;
 	      while (isspace(*lptr)) lptr++;
 	      while (1) {
-		 if (strstr(lptr, ".gate")) break;
+		 if (strstr(lptr, ".gate") || strstr(lptr, ".subckt")) break;
                  while (sscanf(lptr, "%s", OutputName) == 1) {
 	            CleanupString(OutputName);
 	            fprintf(outfile,"%s ", OutputName);
@@ -346,21 +344,31 @@ void ReadNetlistAndConvert(FILE *netfile, FILE *libfile, FILE *outfile,
 	      }
 	      fprintf(outfile, "\n");
 	   }
-	   if (strstr(line, ".gate") != NULL) {
-	      NumberOfInstances++;
-	      fprintf(outfile, "x%d ", NumberOfInstances);
+	   if (strstr(line, ".gate") != NULL || strstr(line, ".subckt") != NULL) {
+	
 	      lptr = line;
 	      while (isspace(*lptr)) lptr++;
-	      if (sscanf(lptr, ".gate %s", InstanceName) == 1) {
+	      if (sscanf(lptr, ".%*s %s", InstanceName) == 1) {
 	         CleanupString(InstanceName);
 
 		 /* Search library records for subcircuit */
-		 if (subcktlib != NULL) {
-		    for (tsub = subcktlib; tsub; tsub = tsub->next) {
-		       if (!strcasecmp(InstanceName, tsub->name))
-			  break;
-		    }
+		 for (tsub = subcktlib; tsub; tsub = tsub->next) {
+		    if (!strcasecmp(InstanceName, tsub->name))
+			break;
 		 }
+		 if (tsub == NULL) {
+		    // Create an entry so we can track instances
+		    tsub = (subcircuitp)malloc(sizeof(subcircuit));
+		    tsub->next = subcktlib;
+		    subcktlib = tsub;
+		    tsub->name = strdup(InstanceName);
+		    tsub->gatecount = 1;
+		    tsub->ports = NULL;
+		 }
+		 else
+		    tsub->gatecount++;
+
+	         fprintf(outfile, "X%s_%d ", tsub->name, tsub->gatecount);
 
 	         if (tsub == NULL) {
 	            if (vddnet == NULL) fprintf(outfile,"vdd ");

@@ -64,3 +64,7 @@ set separator=X		;# Separator between gate names and drive strengths
 set techfile=SCN4M_SUBM.20	;# magic techfile
 set magicrc=osu035.magicrc	;# magic startup script
 set gdsfile=osu035_stdcells.gds	;# GDS database of standard cells
+
+set fanout_options="-l 200 -c 50"	;# blifFanout target maximum latency
+					;# per gate 200ps, output load set to 50fF
+

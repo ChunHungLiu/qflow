@@ -23,6 +23,9 @@
  *
  * Update 10/8/2013:
  *	Changed input file format from BDNET to BLIF
+ *
+ * Update 10/21/2013:
+ *	Removed most of the dependencies on fixed-length arrays
  *---------------------------------------------------------------------------
  *
  * Revision 1.3  2008/09/09 21:24:30  steve_beccue
@@ -45,14 +48,11 @@
 #define  FALSE	     0
 #define  TRUE        1
 #define  MAXLINE     2000
-#define  MAXGATENAME 64
-#define  MAXINPUTS   20
-#define  MAXTYPES    64		// Different drive strength categories
 
-char Inputfname[MAXLINE];
-char Outputfname[MAXLINE];
-char Gatename[MAXGATENAME];
-char Nodename[MAXGATENAME];
+char *Inputfname;
+char *Outputfname;
+char *Gatename;
+char *Nodename;
 char *Buffername = NULL;
 char *buf_in_pin;
 char *buf_out_pin;
@@ -65,11 +65,9 @@ int  GateCount = 0;
 int  GatePrintFlag = 0;
 int  NodePrintFlag = 0;
 int  VerboseFlag = 0;
-char DriveTypes[MAXTYPES][10];
 static char default_sep = '\0';
 static char default_gatepath[] = "gate.cfg";
 
-int  Ngates[2][MAXTYPES];
 int  Topfanout = 0;
 double Topload = 0.0;
 double Topratio = 0.0;
@@ -91,7 +89,7 @@ struct Gatelist {
    struct Gatelist *next;
    char   *gatename;
    int    num_inputs;
-   double Cpin[MAXINPUTS];
+   double *Cpin;
    double Cint;
    double delay;
    double strength;
@@ -113,6 +111,15 @@ struct Nodelist {
 
 struct Nodelist *Nodel;
 
+struct Drivelist {
+   struct Drivelist *next;
+   int NgatesIn;
+   int NgatesOut;
+   char *DriveType;
+} Drivelist_;
+
+struct Drivelist *Drivel;
+
 enum states_ {NONE, OUTPUTS, GATENAME, PINNAME, INPUTNODE, OUTPUTNODE, ENDMODEL};
 enum nodetype_ {INPUT, OUTPUT, OUTPUTPIN, UNKNOWN};
 
@@ -120,6 +127,7 @@ void read_gate_file(char *gate_file_name);
 void read_ignore_file(char *ignore_file_name);
 struct Gatelist* GatelistAlloc();
 struct Nodelist* NodelistAlloc();
+struct Drivelist * DrivelistAlloc();
 void showgatelist(void);
 void helpmessage(void);
 void registernode(char *nodename, int type);
@@ -128,7 +136,7 @@ void write_output(FILE *infptr, FILE *outfptr);
 char *best_size(char *gatename, double amount, char *overload);
 char *find_size(char *gatename);
 char *max_size(char *gatename);
-void count_gatetype(char *name);
+void count_gatetype(char *name, int num_in, int num_out);
 
 /*
  *---------------------------------------------------------------------------
@@ -179,18 +187,16 @@ int main (int argc, char *argv[])
    char line[MAXLINE];
    struct Gatelist *gl;
    struct Nodelist *nl;
+   struct Drivelist *dl;
 
    SuffixIsNumeric = TRUE;	// By default, assume numeric suffixes
    Separator = NULL;		// By default, assume no separator
 
-   for (i = 0; i < MAXTYPES; i++) {
-      Ngates[0][i] = 0;
-      Ngates[1][i] = 0;
-      DriveTypes[i][0] = '\0';
-   }
-   
    Nodel = NodelistAlloc();
    nl = Nodel;
+
+   Drivel = DrivelistAlloc();
+   dl = Drivel;
 
    while ((i = getopt(argc, argv, "gnhvl:c:b:i:o:p:s:f:")) != EOF) {
       switch (i) {
@@ -235,13 +241,18 @@ int main (int argc, char *argv[])
       }
    }
 
-   Inputfname[0] = Outputfname[0] = 0;
+   Gatename = (char *)malloc(1);
+   Gatename[0] = '\0';
+   Nodename = (char *)malloc(1);
+   Nodename[0] = '\0';
+
+   Inputfname = Outputfname = NULL;
    infptr = stdin;
    outfptr = stdout;
    i = optind;
 
    if (i < argc) {
-      strcpy(Inputfname, argv[i]);
+      Inputfname = strdup(argv[i]);
       if (!(infptr = fopen(Inputfname, "r"))) {
 	  fprintf(stderr, "blifFanout: Couldn't open %s for reading.\n", Inputfname);
 	  exit(-1);
@@ -249,7 +260,7 @@ int main (int argc, char *argv[])
    }
    i++;
    if (i < argc) {
-      strcpy(Outputfname, argv[i]);
+      Outputfname = strdup(argv[i]);
       if (!(outfptr = fopen(Outputfname, "w"))) {
 	 fprintf(stderr, "blifFanout: Couldn't open %s for writing.\n", Outputfname);
 	 exit(-1);
@@ -299,7 +310,8 @@ int main (int argc, char *argv[])
 		     if (VerboseFlag) printf("\n\n%s", t);
 		     gateinputs = gl->num_inputs;
 		     Input_node_num = 0;
-		     strcpy(Gatename, t);
+		     free(Gatename);
+		     Gatename = strdup(t);
 		     state = PINNAME;
 		  }
 	       }
@@ -310,7 +322,8 @@ int main (int argc, char *argv[])
 		  state = GATENAME;
 	       else if (t) {
 	          if (VerboseFlag) printf("\nOutput pin %s", t);
-	          strcpy(Nodename, t);
+		  free(Nodename);
+		  Nodename = strdup(t);
 	          registernode(Nodename, OUTPUTPIN);
 	       }
 	       break;
@@ -324,7 +337,8 @@ int main (int argc, char *argv[])
 
 	    case INPUTNODE:
 	       if (VerboseFlag) printf("\nInput node %s", t);
-	       strcpy(Nodename, t);
+	       free(Nodename);
+	       Nodename = strdup(t);
 	       registernode(Nodename, INPUT);
 	       Input_node_num++;
 	       state = PINNAME;
@@ -332,7 +346,8 @@ int main (int argc, char *argv[])
 
 	    case OUTPUTNODE:
 	       if (VerboseFlag) printf("\nOutput node %s", t);
-	       strcpy(Nodename, t);
+	       free(Nodename);
+	       Nodename = strdup(t);
 	       registernode(Nodename, OUTPUT);
 	       state = PINNAME;
 	       break;
@@ -360,8 +375,10 @@ int main (int argc, char *argv[])
       if (nl->ignore == FALSE) {
          if (nl->num_inputs >= Topfanout && nl->outputgatestrength != 0.0) {
 	    Topfanout = nl->num_inputs;
-	    strcpy(Nodename, nl->nodename);
-	    strcpy(Gatename, nl->outputgatename);
+	    free(Nodename);
+	    Nodename = strdup(nl->nodename);
+	    free(Gatename);
+	    Gatename = strdup(nl->outputgatename);
 	    Strength = nl->outputgatestrength;
          }
          if (nl->ratio >= Topratio && nl->outputgatestrength != 0.0) {
@@ -389,11 +406,10 @@ int main (int argc, char *argv[])
 
    fprintf(stderr, "\nIn:\n");
    j = 0;
-   for (i = 0; i < MAXTYPES; i++) {
-      if (DriveTypes[i][0] == '\0') break;	/* No more drive types */
-      if (Ngates[0][i] > 0) {
-	 fprintf(stderr, "%d\t%s%s gate%c\t", Ngates[0][i], Separator,
-		DriveTypes[i], Ngates[0][i] > 1 ? 's' : ' ');
+   for (dl = Drivel; dl; dl = dl->next) {
+      if (dl->NgatesIn > 0) {
+	 fprintf(stderr, "%d\t%s%s gate%c\t", dl->NgatesIn, Separator,
+		dl->DriveType, dl->NgatesIn > 1 ? 's' : ' ');
 	 j++;
 	 if (j > 3) {
 	    fprintf(stderr, "\n");
@@ -405,11 +421,10 @@ int main (int argc, char *argv[])
 
    fprintf(stderr, "\nOut:\n");
    j = 0;
-   for (i = 0; i < MAXTYPES; i++) {
-      if (DriveTypes[i][0] == '\0') break;	/* No more drive types */
-      if (Ngates[1][i] > 0) {
-	 fprintf(stderr, "%d\t%s%s gate%c\t", Ngates[1][i], Separator,
-		DriveTypes[i], Ngates[1][i] > 1 ? 's' : ' ');
+   for (dl = Drivel; dl; dl = dl->next) {
+      if (dl->NgatesOut > 0) {
+	 fprintf(stderr, "%d\t%s%s gate%c\t", dl->NgatesOut, Separator,
+		dl->DriveType, dl->NgatesOut > 1 ? 's' : ' ');
 	 j++;
 	 if (j > 3) {
 	    fprintf(stderr, "\n");
@@ -446,7 +461,7 @@ void read_ignore_file(char *ignore_file_name)
 		ignore_file_name);
       fflush(stderr);
       return;
-      // This is only a warning.  It will not stop executaion of blifFanout
+      // This is only a warning.  It will not stop execution of blifFanout
    }
 
    while ((s = fgets(line, MAXLINE, ignorefptr)) != NULL) {
@@ -520,7 +535,8 @@ void read_gate_file(char *gate_file_name)
 	    return;
 	 }
 
-	 strcpy(gl->gatename, t);
+	 free(gl->gatename);
+	 gl->gatename = strdup(t);
 	 do { 
 	    t = strtok( NULL, " \t");
 	    if (t) {
@@ -530,11 +546,17 @@ void read_gate_file(char *gate_file_name)
 		     break;
 		  case 1:
 		     gl->num_inputs = (int)atoi(t);
+		     gl->Cpin = (double *)malloc(gl->num_inputs * sizeof(double));
 		     break;
 		  case 2:
 		     gl->Cint = (double)atof(t);
 		     break;
 		  default:
+		     if ((j - 3) >= gl->num_inputs) {
+			fprintf(stderr, "Error:  Gate %s number of inputs mismatch.\n",
+				gl->gatename);
+			return;
+		     }
 		     gl->Cpin[(j - 3)] = (double)atof(t);
 		     break;
 	       }
@@ -572,8 +594,27 @@ struct Gatelist* GatelistAlloc()
 
    gl = (struct Gatelist*)malloc(sizeof(struct Gatelist));
    gl->next = NULL;
-   gl->gatename = calloc(MAXGATENAME, 1);
+   gl->gatename = (char *)malloc(1);
+   gl->gatename[0] = '\0';
    return gl;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ */
+
+struct Drivelist *DrivelistAlloc()
+{
+   struct Drivelist *dl;
+
+   dl = (struct Drivelist *)malloc(sizeof(struct Drivelist));
+   dl->next = NULL;
+   dl->NgatesIn = 0;
+   dl->NgatesOut = 0;
+   dl->DriveType = (char *)malloc(1);
+   dl->DriveType[0] = '\0';
+   return dl;
 }
 
 /*
@@ -587,9 +628,11 @@ struct Nodelist* NodelistAlloc()
 
    nl = (struct Nodelist *)malloc(sizeof(struct Nodelist));
    nl->next = NULL;
-   nl->nodename = calloc(MAXGATENAME, 1);
+   nl->nodename = (char *)malloc(1);
+   nl->nodename[0] = '\0';
    nl->ignore = FALSE;
-   nl->outputgatename = calloc(MAXGATENAME, 1);
+   nl->outputgatename = (char *)malloc(1);
+   nl->outputgatename[0] = '\0';
    nl->outputgatestrength = 0.0;
    nl->is_outputpin = FALSE;
    nl->total_load = 0.0;
@@ -611,7 +654,7 @@ void showgatelist(void)
       printf("\n\ngate: %s with %d inputs and %g drive strength\n",
 		gl->gatename, gl->num_inputs, gl->strength);
       printf("%g ", gl->Cint);
-      for (i = 0; i < gl->num_inputs && i < MAXINPUTS; i++) {
+      for (i = 0; i < gl->num_inputs; i++) {
 	 printf("%g   ", gl->Cpin[i]);
       }
    }
@@ -634,16 +677,19 @@ void registernode(char *nodename, int type)
       }
    }
 
-   if (!nl->next)
-      strcpy(nl->nodename, Nodename);
+   if (!nl->next) {
+      free(nl->nodename);
+      nl->nodename = strdup(Nodename);
+   }
 
    if (type == OUTPUT) {
-      strcpy(nl->outputgatename, Gatename);
+      free(nl->outputgatename);
+      nl->outputgatename = strdup(Gatename);
       for (gl = Gatel; gl->next; gl = gl->next) {
 	 if (!(strcmp(Gatename, gl->gatename))) {
 	    nl->outputgatestrength = gl->strength;
 	    nl->total_load += gl->Cint;
-	    count_gatetype(Gatename);
+	    count_gatetype(Gatename, 1, 1);
 	    break;
 	 }
       }
@@ -677,30 +723,34 @@ void registernode(char *nodename, int type)
  *---------------------------------------------------------------------------
  */
 
-void count_gatetype(char *name)
+void count_gatetype(char *name, int num_in, int num_out)
 {
+   struct Drivelist *dl;
    char *s, *nptr, *tsuf;
    int g;
 
    if ((s = find_suffix(name)) == NULL)
       return;
 
-   for (g = 0; g < MAXTYPES; g++) {
-      if (DriveTypes[g][0] == '\0') {
-	 strncpy(DriveTypes[g], s, 9);		// New drive type found
-	 break;
-      }
-      else if (!strcmp(DriveTypes[g], s))
+   for (dl = Drivel; dl; dl = dl->next) {
+      if (!strcmp(dl->DriveType, s))
 	 break;
    }
 
-   if (g < MAXTYPES) {
-      Ngates[0][g]++;
-      Ngates[1][g]++;
+   if (dl == NULL) {
+
+      // New drive type found
+
+      dl = DrivelistAlloc();
+      dl->next = Drivel;
+      Drivel = dl;
+
+      free(dl->DriveType);
+      dl->DriveType = strdup(s);
    }
-   else {
-      fprintf(stderr, "Don't know gatetype %s", name);
-   }
+
+   dl->NgatesIn += num_in;	// Number of these gates before processing
+   dl->NgatesOut += num_out;	// Number of these gates after processing
 }
 
 /*
@@ -732,14 +782,15 @@ void write_output(FILE *infptr, FILE *outfptr)
    char *s, *t;
    char line[MAXLINE];
    char inputline[MAXLINE];
-   char gateline[MAXLINE * 10];
    char bufferline[MAXLINE];
+   char *gateline;
    char *cbest, *cend, *stren, *orig;
    int  state, i;
    int gateinputs;
    int needscorrecting;
    struct Gatelist *gl;
    struct Nodelist *nl;
+   struct Drivelist *dl;
    double inv_size;
 
    Changed_count = 0;
@@ -748,7 +799,9 @@ void write_output(FILE *infptr, FILE *outfptr)
 
    rewind(infptr);
 
+   gateline = (char *)malloc(1);
    gateline[0] = '\0';
+
    while ((s = fgets(line, MAXLINE, infptr)) != NULL) {
       strcpy(inputline, s);		// save this for later
       t = strtok(s, " \t=\n");
@@ -760,7 +813,8 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     gateinputs = gl->num_inputs;
 		     Input_node_num = 0;
 		     needscorrecting = 0;
-		     strcpy(Gatename, t);
+		     free(Gatename);
+		     Gatename = strdup(t);
 		     state = PINNAME;
 		  }
 	       }
@@ -775,14 +829,16 @@ void write_output(FILE *infptr, FILE *outfptr)
 
 	    case INPUTNODE:
 	       if (VerboseFlag) printf("\nInput node %s", t);
-	       strcpy(Nodename, t);
+	       free(Nodename);
+	       Nodename = strdup(t);
 	       Input_node_num++;
 	       state = PINNAME;
 	       break;
 
 	    case OUTPUTNODE:
 	       if (VerboseFlag) printf("\nOutput node %s", t);
-	       strcpy(Nodename, t);
+	       free(Nodename);
+	       Nodename = strdup(t);
 
 	       for (nl = Nodel; nl->next ; nl = nl->next) {
 		  if (!strcmp(Nodename, nl->nodename)) {
@@ -792,7 +848,7 @@ void write_output(FILE *infptr, FILE *outfptr)
 			needscorrecting = TRUE;
 			orig = find_size(Gatename);
 			stren = best_size(Gatename, nl->total_load + WireCap, NULL);
-			if (VerboseFlag)
+			if (stren && VerboseFlag)
 			   printf("\nGate changed from %s to %s\n", Gatename, stren);
 			inv_size = nl->total_load;
 		     }
@@ -809,6 +865,9 @@ void write_output(FILE *infptr, FILE *outfptr)
 					Gatename, stren);
 			}
 		     }
+		     // Don't attempt to correct gates for which we cannot find a suffix
+		     if (orig == NULL) needscorrecting = FALSE;
+		     break;
 		  }
 	       }
 	       state = PINNAME;
@@ -857,10 +916,9 @@ void write_output(FILE *infptr, FILE *outfptr)
 		  cend = find_size(cbest);
 
 		  // This really ought to be done with hash tables. . .
-		  for (i = 0; i < MAXTYPES; i++) {
-		     if (DriveTypes[i][0] == '\0') break;
-		     else if (!strcmp(DriveTypes[i], cend)) {
-			Ngates[1][i]++;
+		  for (dl = Drivel; dl; dl = dl->next) {
+		     if (!strcmp(dl->DriveType, cend)) {
+			dl->NgatesOut++;
 			break;
 		     }
 		  }
@@ -905,13 +963,8 @@ void write_output(FILE *infptr, FILE *outfptr)
 	             Changed_count++;
 
 		     /* Adjust the gate count for "in" and "out" types */
-		     for (i = 0; i < MAXTYPES; i++) {
-		        if (DriveTypes[i][0] == '\0') break;
-		        else if (!strcmp(DriveTypes[i], orig))
-			   Ngates[1][i]--;
-		        else if (!strcmp(DriveTypes[i], repl))
-			   Ngates[1][i]++;
-		     }
+		     count_gatetype(Gatename, 0, -1);
+		     count_gatetype(stren, 0, 1);
 		  }
 	       }
             }
@@ -935,6 +988,8 @@ void write_output(FILE *infptr, FILE *outfptr)
 	    gateline[0] = '\0';		/* Start a new line */
 	 }
       }
+      /* Append input line to gate */
+      gateline = (char *)realloc(gateline, strlen(gateline) + strlen(inputline) + 1);
       strcat(gateline, inputline);	/* Append input line to gate */
    }
    if (VerboseFlag) printf("\n");

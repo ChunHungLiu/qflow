@@ -30,12 +30,12 @@ if ( $tech == "" ) then
    endif
 endif
 
-# For the moment, odin_ii is the default sythesis tool.  Use
-# option "-t yosys" to use yosys instead.
+# yosys is the default sythesis tool.  Use option "-t odin" to use
+# odin_ii instead.
 
 set tool=`printenv QFLOW_SYNTHESIS_TOOL`
 if ( $tool == "" ) then
-   set tool="odin"
+   set tool="yosys"
 endif
 
 # Environment variable overrides the project root path in all cases
@@ -305,8 +305,11 @@ endif
 if ($dosynth == 0) then
    echo -n "# " >> ${execfile}
 endif
-echo "${scriptdir}/synthesize.sh ${projectpath} ${modulename}" \
-	>> ${execfile}
+if ("x$tool" == "xyosys") then
+   echo "${scriptdir}/synthesize_yosys.sh ${projectpath} ${modulename}" >> ${execfile}
+else
+   echo "${scriptdir}/synthesize_odin.sh ${projectpath} ${modulename}" >> ${execfile}
+endif
 
 if ($doplace == 0) then
    echo -n "# " >> ${execfile}

@@ -21,23 +21,21 @@
 #define FALSE		0
 #define NMOS		1
 #define PMOS		0
-// These really need to be allocated---need to rewrite!
-#define LengthOfNodeName	512
-#define LengthOfLine    	512
-#define MaxNumberOfInputs 	512
-#define MaxNumberOfOutputs 	512
-#define LengthOfInOutString 10000
 
-#define NumberOfUniqueConnections 6
+#define LengthOfLine    	16384
+#define LengthOfNodeName	512
 
 /* getopt stuff */
 extern	int	optind, getopt();
 extern	char	*optarg;
 
+#define INPUT	0
+#define OUTPUT	1
+
 struct Vect {
 	struct Vect *next;
-	char name[LengthOfLine];
-	char direction[LengthOfNodeName];
+	char *name;
+	char direction;		/* INPUT or OUTPUT */
 	int Max;
 };
 
@@ -50,19 +48,19 @@ void helpmessage();
 int ParseNumber( char *test);
 struct Vect *VectorAlloc(void);
 
-char VddNet[LengthOfNodeName];
-char GndNet[LengthOfNodeName];
+char *VddNet = NULL;
+char *GndNet = NULL;
 
 int main ( int argc, char *argv[])
 {
-	FILE *NET1, *NET2, *OUT;
+	FILE *NET1 = NULL, *NET2, *OUT;
 	struct Resistor *ResistorData;
 	int i,AllMatched,NetsEqual,ImplicitPower,MaintainCase;
 
-	char Net1name[LengthOfNodeName];
+	char *Net1name = NULL;
 
-	strcpy(VddNet, "VDD");		// Default power net name
-	strcpy(GndNet, "VSS");		// Default ground net name
+	VddNet = strdup("VDD");
+	GndNet = strdup("VSS");
 	
 	ImplicitPower=TRUE;
 	MaintainCase=FALSE;
@@ -79,10 +77,12 @@ int main ( int argc, char *argv[])
 	       helpmessage();
 	       break;
 	   case 'v':
-	       strcpy(VddNet, optarg);
+	       free(VddNet);
+	       VddNet = strdup(optarg);
 	       break;
 	   case 'g':
-	       strcpy(GndNet, optarg);
+	       free(GndNet);
+	       GndNet = strdup(optarg);
 	       break;
 	   default:
 	       fprintf(stderr,"\nbad switch %d\n", i );
@@ -92,7 +92,7 @@ int main ( int argc, char *argv[])
         }
 
         if( optind < argc )	{
-           strcpy(Net1name,argv[optind]);
+	   Net1name = strdup(argv[optind]);
 	   optind++;
 	}
 	else	{
@@ -100,7 +100,8 @@ int main ( int argc, char *argv[])
 	   exit(EXIT_FAILURE);
 	}
         optind++;
-	NET1=fopen(Net1name,"r");
+	if (Net1name)
+	    NET1=fopen(Net1name,"r");
 	if (NET1 == NULL ) {
 		fprintf(stderr,"Couldn't open %s for read\n",Net1name);
 		exit(EXIT_FAILURE);
@@ -113,7 +114,11 @@ int main ( int argc, char *argv[])
 }
 
 
-
+struct GateList {
+   struct GateList *next;
+   char *gatename;
+   int gatecount;
+};
 
 
 /*--------------------------------------------------------------*/
@@ -125,34 +130,37 @@ int main ( int argc, char *argv[])
 \*--------------------------------------------------------------*/
 void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int MaintainCase)
 {
+	struct Vect *Vector, *VectorPresent;
+	struct GateList *glist;
+	struct GateList *gl;
+	int i, Found, NumberOfInputs, NumberOfOutputs;
+	int First, VectorIndex, ItIsAnInput, ItIsAnOutput, PrintIt;
 
-	struct Vect *Vector,*VectorPresent;
-	int i,Found,NumberOfInputs,NumberOfOutputs,NumberOfInstances;
-	int First,VectorIndex,ItIsAnInput,ItIsAnOutput,PrintIt;
-	int breakCond;
-
-	float length, width, Value;
-
-
-	char *node2pnt,*lengthpnt,*widthpnt,*FirstblankafterNode2, *Weirdpnt, *lptr;
         char line[LengthOfLine];
-	char allinputs[LengthOfInOutString];
-	char alloutputs[LengthOfInOutString];
-	char InputName[LengthOfNodeName], OutputName[LengthOfNodeName];
-	char InputNodes[MaxNumberOfInputs][LengthOfNodeName];
-	char OutputNodes[MaxNumberOfOutputs][LengthOfNodeName];
-        char MainSubcktName[LengthOfNodeName],node1[LengthOfNodeName];
-	char InstanceName[LengthOfNodeName],InstancePortName[LengthOfNodeName];
+
+	char *Weirdpnt, *lptr;
+	char *allinputs = NULL;
+	char *alloutputs = NULL;
+	char **InputNodes;
+	char **OutputNodes;
+	char InputName[LengthOfNodeName];
+	char OutputName[LengthOfNodeName];
+        char MainSubcktName[LengthOfNodeName];
+	char InstanceName[LengthOfNodeName];
+	char InstancePortName[LengthOfNodeName];
 	char InstancePortWire[LengthOfNodeName];
-        char node2[LengthOfNodeName],nodelabel[LengthOfNodeName];
-        char body[LengthOfNodeName],model[LengthOfNodeName];
 	char dum[LengthOfNodeName];
+
+	glist = NULL;
+
+	NumberOfOutputs = 0;
+	NumberOfInputs = 0;
+
+	InputNodes = (char **)malloc(sizeof(char *));
+	OutputNodes = (char **)malloc(sizeof(char *));
 
 	/* Read in line by line */
 
-	NumberOfInstances = 0;
-	NumberOfOutputs = 0;
-	NumberOfInputs = 0;
 	First = TRUE;
 	Vector = VectorAlloc();
 	Vector->next = NULL;
@@ -167,14 +175,15 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	      }
 	   }
 	   if (strstr(lptr, ".inputs") != NULL) {
-	      strcpy(allinputs, "");
+	      allinputs = (char *)malloc(1);
+	      allinputs[0] = '\0';
 	      while (!isspace(*lptr)) lptr++;
 	      while (isspace(*lptr)) lptr++;
 	      while (1) {
                  if (sscanf(lptr, "%s", InputName) == 1) {
 	            PrintIt = TRUE;
 	            CleanupString(InputName);
-	            strcpy(InputNodes[NumberOfInputs], InputName);
+		    InputNodes[NumberOfInputs] = strdup(InputName);
 	            if ((Weirdpnt = strchr(InputName,'[')) != NULL) {
 	               PrintIt = FALSE;
 	               VectorIndex = ParseNumber(Weirdpnt); // This one needs to cut off [..]
@@ -189,8 +198,8 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	                  VectorPresent = VectorPresent->next; 
 	               }
 	               if (!Found) {
-	                  strcpy(VectorPresent->name, InputName);
-	                  strcpy(VectorPresent->direction, "input");
+			  VectorPresent->name = strdup(InputName);
+			  VectorPresent->direction = INPUT;
 	                  VectorPresent->Max = VectorIndex;
 	                  VectorPresent->next = VectorAlloc();
 	                  VectorPresent->next->next = NULL;
@@ -204,11 +213,14 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	               else fprintf(OUT, ", %s", InputName);
 	            }
 	            if (PrintIt) {		//Should not print vectors now
+		       allinputs = (char *)realloc(allinputs,
+				strlen(allinputs) + strlen(InputName) + 9);
 	               strcat(allinputs, "input ");
 	               strcat(allinputs, InputName);
 	               strcat(allinputs, ";\n");
 	            }
 	            NumberOfInputs++;
+		    InputNodes = (char **)realloc(InputNodes, (NumberOfInputs + 1) * sizeof(char *));
 		    while (!isspace(*lptr)) lptr++;
 		    while (isspace(*lptr)) lptr++;
 		    if (*lptr == '\\') {
@@ -225,14 +237,15 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	      }
 	   }
 	   if (strstr(lptr, ".outputs") != NULL) {
-	      strcpy(alloutputs, "");
+	      alloutputs = (char *)malloc(1);
+	      alloutputs[0] = '\0';
 	      while (!isspace(*lptr)) lptr++;
 	      while (isspace(*lptr)) lptr++;
 	      while (1) {
                  if (sscanf(lptr, "%s", OutputName) == 1) {
 	            PrintIt = TRUE;
 	            CleanupString(OutputName);
-	            strcpy(OutputNodes[NumberOfOutputs], OutputName);
+		    OutputNodes[NumberOfOutputs] = strdup(OutputName);
 	            if ((Weirdpnt = strchr(OutputName,'[')) != NULL) {
 	               PrintIt = FALSE;
 	               VectorIndex = ParseNumber(Weirdpnt);	// This one needs to cut off [..]
@@ -247,8 +260,8 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	                  VectorPresent = VectorPresent->next; 
 	               }
 	               if (!Found) {
-	                  strcpy(VectorPresent->name, OutputName);
-	                  strcpy(VectorPresent->direction, "output");
+			  VectorPresent->name = strdup(OutputName);
+	                  VectorPresent->direction = OUTPUT;
 	                  VectorPresent->Max = VectorIndex;
 	                  VectorPresent->next = VectorAlloc();
 	                  VectorPresent->next->next = NULL;
@@ -262,11 +275,14 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	               else fprintf(OUT, ", %s", OutputName);
 	            }
 	            if (PrintIt) {
+		       alloutputs = (char *)realloc(alloutputs,
+				strlen(alloutputs) + strlen(OutputName) + 10);
 	               strcat(alloutputs, "output ");
 	               strcat(alloutputs, OutputName);
 	               strcat(alloutputs, ";\n");
 	            }
 	            NumberOfOutputs++;
+		    OutputNodes = (char **)realloc(OutputNodes, (NumberOfOutputs + 1) * sizeof(char *));
 		    while (!isspace(*lptr)) lptr++;
 		    while (isspace(*lptr)) lptr++;
 		    if (*lptr == '\\') {
@@ -285,12 +301,15 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	      if (ImplicitPower)
 		  fprintf(OUT, "input %s, %s;\n", GndNet, VddNet);
 
-	      fprintf(OUT, "%s", allinputs);
-	      fprintf(OUT, "%s", alloutputs);
+	      if (allinputs) fprintf(OUT, "%s", allinputs);
+	      if (alloutputs) fprintf(OUT, "%s", alloutputs);
 
 	      VectorPresent = Vector;
 	      while (VectorPresent->next != NULL) {
-	         fprintf(OUT, "%s [%d:0] %s;\n", VectorPresent->direction, VectorPresent->Max,
+	         fprintf(OUT, "%s [%d:0] %s;\n",
+				(VectorPresent->direction == INPUT) ?
+				"input" : "output",
+				VectorPresent->Max,
 				VectorPresent->name);
 	         VectorPresent = VectorPresent->next;
 	      }
@@ -299,13 +318,27 @@ void ReadNetlistAndConvert(FILE *NETFILE, FILE *OUT, int ImplicitPower, int Main
 	   if (strstr(lptr, ".end") != NULL) {
               fprintf(OUT, "endmodule\n");
            }
-	   if (strstr(lptr,".gate") != NULL ) {
-	      NumberOfInstances++;
-	      if (sscanf(lptr, ".gate %s", InstanceName) == 1) {
+	   if (strstr(lptr,".gate") != NULL || strstr(lptr, ".subckt") != NULL) {
+	      if (sscanf(lptr, ".%*s %s", InstanceName) == 1) {
 	         CleanupString(InstanceName);
 
 	         if (!MaintainCase) ToLowerCase(InstanceName);
-	         fprintf(OUT, "\t%s u%d ( ", InstanceName, NumberOfInstances);
+
+		 for (gl = glist; gl; gl = gl->next) {
+		    if (!strcmp(gl->gatename, InstanceName)) {
+		       gl->gatecount++;
+		       break;
+		    }
+		 }
+		 if (gl == NULL) {
+		    gl = (struct GateList *)malloc(sizeof(struct GateList));
+		    gl->gatename = strdup(InstanceName);
+		    gl->gatecount = 1;
+		    gl->next = glist;
+		    glist = gl;
+		 }
+
+	         fprintf(OUT, "\t%s %s_%d ( ", gl->gatename, gl->gatename, gl->gatecount);
 	         First = TRUE;
 	         if (ImplicitPower) fprintf(OUT, ".%s(%s), .%s(%s), ",
 			GndNet, GndNet, VddNet, VddNet); 
@@ -495,25 +528,6 @@ float getnumber(char *strpntbegin)
         }
         return number;
 }          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /*--------------------------------------------------------------*/
