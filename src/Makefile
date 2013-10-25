@@ -21,7 +21,7 @@ HAVE_ABC = 1
 HAVE_YOSYS = 1
 HAVE_ODIN_II = 1
 
-OBJECTS = AddIO2blif.o blif2BSpice.o blif2Verilog.o blifFanout.o
+OBJECTS = blif2BSpice.o blif2Verilog.o blifFanout.o
 OBJECTS += verilogpp.o dcombine.o liberty2tech.o vesta.o
 SOURCES := $(patsubst %.o,%.c,$(OBJECTS))
 TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
@@ -29,9 +29,6 @@ TARGETS := $(patsubst %.o,%$(EXEEXT),$(OBJECTS))
 BININSTALL = ${QFLOW_LIB_DIR}/bin
 
 all: $(TARGETS)
-
-AddIO2blif$(EXEEXT): AddIO2blif.o
-	$(CC) $(LDFLAGS) AddIO2blif.o -o $@ $(LIBS)
 
 blif2BSpice$(EXEEXT): blif2BSpice.o
 	$(CC) $(LDFLAGS) blif2BSpice.o -o $@ $(LIBS)

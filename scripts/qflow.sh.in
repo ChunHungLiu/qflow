@@ -275,6 +275,8 @@ if ( ! -f ${userfile} ) then
    echo "# -------------------------------------------" >> ${userfile}
    echo "# set vpp_options = " >> ${userfile}
    echo "# set yosys_options = " >> ${userfile}
+   echo "# set yosys_script = " >> ${userfile}
+   echo "# set nobuffers = " >> ${userfile}
    echo "# set odin_options = " >> ${userfile}
    echo "# set abc_options = " >> ${userfile}
    echo "# set abc_script = " >> ${userfile}

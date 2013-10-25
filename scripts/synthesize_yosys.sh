@@ -31,6 +31,8 @@ else
    echo	      variable names:
    echo
    echo			$yosys_options	for yosys
+   echo			$yosys_script	for yosys
+   echo			$nobuffers	to bypass ybuffer
    echo			$fanout_options	for blifFanout
    exit 1
 endif
@@ -142,7 +144,26 @@ end
 
 cat >> ${rootname}.ys << EOF
 # High-level synthesis
-hierarchy; proc; memory; opt; fsm; opt
+hierarchy
+EOF
+
+if ( ${?yosys_script} ) then
+   if ( -f ${yosys_script} ) then
+      cat ${yosys_script} >> ${rootname}.ys
+   else
+      echo "Error: yosys script ${yosys_script} specified but not found"
+   endif
+else
+
+   cat >> ${rootname}.ys << EOF
+
+# High-level synthesis
+proc; memory; opt; fsm; opt
+EOF
+
+endif
+
+cat >> ${rootname}.ys << EOF
 flatten ${rootname}
 hierarchy -top ${rootname}
 
@@ -170,9 +191,15 @@ if ( ! ${?yosys_options} ) then
    set yosys_options = ""
 endif
 
-echo "Running yosys for verilog parsing and synthesis" |& tee -a ${synthlog}
-eval ${bindir}/yosys ${yosys_options} -s ${rootname}.ys |& tee -a ${synthlog}
+# Check if "yosys_options" specifies a script to use for yosys.
+# If not, call yosys with the default script.
+set usescript = `echo ${yosys_options} | grep -- -s | wc -l`
 
+echo "Running yosys for verilog parsing and synthesis" |& tee -a ${synthlog}
+if ( ${usescript} == 1 ) then
+   eval ${bindir}/yosys ${yosys_options} |& tee -a ${synthlog}
+else
+   eval ${bindir}/yosys ${yosys_options} -s ${rootname}.ys |& tee -a ${synthlog}
 endif
 
 #---------------------------------------------------------------------
@@ -192,14 +219,18 @@ ${scriptdir}/ypostproc.tcl ${rootname}_mapped.blif ${rootname} \
 	${techdir}/${techname}.sh
 
 #---------------------------------------------------------------------
-# NOTE:  To be restored, want to handle specific user instructions
-# to either double-buffer the outputs or to latch or double-latch
-# the inputs (asynchronous ones, specifically)
+# Add buffers in front of all outputs
 #---------------------------------------------------------------------
-# echo "Running AddIO2blif"
-# ${bindir}/AddIO2blif -t ${techdir}/${techname}.genlib \
-# 	-b ${bufcell} -f ${flopcell} \
-# 	${rootname}_mapped_tmp.blif > ${rootname}_mapped_buf.blif
+
+if ($?nobuffers) then
+   set final_blif = "${rootname}_mapped_tmp.blif"
+else
+   echo "Adding output buffers"
+   ${scriptdir}/ybuffer.tcl ${rootname}_mapped_tmp.blif \
+	${rootname}_mapped_buf.blif ${techdir}/${techname}.sh
+   set final_blif = "${rootname}_mapped_buf.blif"
+endif
+
 #---------------------------------------------------------------------
 # The following definitions will replace "LOGIC0" and "LOGIC1"
 # with buffers from gnd and vdd, respectively.  This takes care
@@ -231,7 +262,7 @@ endif
 # form node<c>_FF_INPUT
 #---------------------------------------------------------------------
 
-cat ${rootname}_mapped_tmp.blif | sed \
+cat ${final_blif} | sed \
 	-e "$subs0a" -e "$subs0b" -e "$subs1a" -e "$subs1b" \
 	-e 's/\\\([^$]\)/\1/g' \
 	-e 's/$techmap//g' \
@@ -240,7 +271,6 @@ cat ${rootname}_mapped_tmp.blif | sed \
 
 # Switch to synthdir for processing of the BDNET netlist
 cd ${synthdir}
-
 
 #---------------------------------------------------------------------
 # Make a copy of the original blif file, as this will be overwritten
