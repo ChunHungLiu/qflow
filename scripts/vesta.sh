@@ -1,13 +1,12 @@
 #!/bin/tcsh -f
 #----------------------------------------------------------
-# Route script using qrouter
+# Static timing analysis script using vesta
 #----------------------------------------------------------
-# Tim Edwards, 5/16/11, for Open Circuit Design
-# Modified April 2013 for use with qflow
+# Tim Edwards, 10/29/13, for Open Circuit Design
 #----------------------------------------------------------
 
 if ($#argv < 2) then
-   echo Usage:  router.sh [options] <project_path> <source_name>
+   echo Usage:  vesta.sh [options] <project_path> <source_name>
    exit 1
 endif
 
@@ -22,7 +21,7 @@ if ($argc == 2) then
    set argv1=`echo $cmdargs | cut -d' ' -f1`
    set argv2=`echo $cmdargs | cut -d' ' -f2`
 else
-   echo Usage:  router.sh [options] <project_path> <source_name>
+   echo Usage:  vesta.sh [options] <project_path> <source_name>
    echo   where
    echo       <project_path> is the name of the project directory containing
    echo                 a file called qflow_vars.sh.
@@ -47,40 +46,26 @@ source ${projectpath}/qflow_vars.sh
 source ${techdir}/${techname}.sh
 cd ${projectpath}
 
-if (! ${?qrouter_options} ) then
-   set qrouter_options = ""
+if (! ${?vesta_options} ) then
+   set vesta_options = ""
 endif
 
 #----------------------------------------------------------
 # Done with initialization
 #----------------------------------------------------------
 
-cd ${layoutdir}
+cd ${synthdir}
 
 #------------------------------------------------------------------
-# Create the detailed route.  Monitor the output and print errors
-# to the output, as well as writing the "commit" line for every
-# 100th route, so the end-user can track the progress.
+# Generate the static timing analysis results
 #------------------------------------------------------------------
 
-echo "Running qrouter"
-${bindir}/qrouter -c ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
-		${qrouter_options} ${rootname} |& tee -a ${synthlog} | \
-		grep - -e fail -e Progess -e TotalRoutes.\*00\$
-
-#---------------------------------------------------------------------
-# Spot check:  Did qrouter produce file ${rootname}_route.def?
-#---------------------------------------------------------------------
-
-if ( !( -f ${rootname}_route.def || ( -M ${rootname}_route.def \
-		< -M ${rootname}.def ))) then
-   echo "qrouter failure:  No file ${rootname}_route.def." |& tee -a ${synthlog}
-   echo "Premature exit." |& tee -a ${synthlog}
-   exit 1
-endif
-
-mv ${rootname}.def ${rootname}_unroute.def
-mv ${rootname}_route.def ${rootname}.def
+echo ""
+echo "Running vesta static timing analysis"
+echo ""
+${bindir}/vesta ${vesta_options} ${rootname}.rtlnopwr.v \
+		${techdir}/${libertyfile} |& tee -a ${synthlog}
+echo ""
 
 #------------------------------------------------------------
 # Done!

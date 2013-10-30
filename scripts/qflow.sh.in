@@ -58,6 +58,7 @@ set dohelp=0
 set dosynth=0
 set doplace=0
 set dobuffer=0
+set dosta=0
 set doroute=0
 set doclean=0
 set dodisplay=0
@@ -104,6 +105,11 @@ while ($#argv > 0)
 	 set actions=1
 	 shift
 	 breaksw
+      case sta:
+	 set dosta=1
+	 set actions=1
+	 shift
+	 breaksw
       case route:
 	 set doroute=1
 	 set actions=1
@@ -121,6 +127,7 @@ while ($#argv > 0)
 	 set dosynth=1
 	 set doplace=1
 	 set dobuffer=1
+	 set dosta=1
 	 set doroute=1
 	 set doclean=1
 	 set dodisplay=1
@@ -152,6 +159,7 @@ if ($dohelp == 1 || $#argv != 0) then
    echo "Processes:  synthesize			Synthesize verilog source"
    echo "            place			Run initial placement"
    echo "            buffer			Buffer large fanout nets"
+   echo "	     sta			Static timing analysis"
    echo "            route			Run final placement and route"
    echo "            clean			Remove temporary working files"
    echo "            display			Display routed result"
@@ -329,6 +337,11 @@ if ($dobuffer == 0) then
    echo -n "# " >> ${execfile}
 endif
 echo "${scriptdir}/placement.sh -d ${projectpath} ${modulename}" >> ${execfile}
+
+if ($dosta == 0) then
+   echo -n "# " >> ${execfile}
+endif
+echo "${scriptdir}/vesta.sh ${projectpath} ${modulename}" >> ${execfile}
 
 if ($doroute == 0) then
    echo -n "# " >> ${execfile}
