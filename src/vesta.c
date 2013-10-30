@@ -86,6 +86,16 @@ int fileCurrentLine;
 #define LATCHIN		0x80	// Latch input
 #define LATCHEN		0x100	// Latch enable
 
+// Timing type (for tables)
+
+#define TIMING_PROP_TRANS	0
+#define TIMING_HOLD		1
+#define TIMING_SETUP		2
+#define TIMING_SET_RESET	3
+#define TIMING_RECOVERY		4
+#define TIMING_REMOVAL		5
+#define TIMING_TRISTATE		6
+
 // A few short-hand definitions
 #define DFF_ALL_IN	(DFFCLK | DFFIN | DFFSET | DFFRST)	
 #define LATCH_ALL_IN	(LATCHIN | LATCHEN)
@@ -233,6 +243,7 @@ typedef struct _cell {
 
 typedef struct _net *netptr;
 typedef struct _connect *connptr;
+typedef struct _delaydata *ddataptr;
 
 typedef struct _net {
    char *name;
@@ -249,8 +260,9 @@ typedef struct _instance *instptr;
 
 typedef struct _connect {
    instptr refinst;
-   pinptr refpin;
-   netptr refnet;
+   pinptr  refpin;
+   netptr  refnet;
+   ddataptr tag;		/* Tag value for checking for loops and endpoints */
    connptr next;
 } connect;
 
@@ -277,9 +289,8 @@ typedef struct _btdata {
 
 // Linked list of backtrace records
 
-typedef struct _delaydata *ddataptr;
-
 typedef struct _delaydata {
+   double delay;	/* Total delay, including setup and clock skew */
    btptr backtrace;
    ddataptr  next;
 } delaydata;
@@ -341,9 +352,18 @@ advancetoken(FILE *flib, char delimiter)
  	    lptr = line;
 	    while (*lptr != '\n' && *lptr != '\0') {
 		if (*lptr == '\\') {
-		    result = fgets(lptr, LIB_LINE_MAX - (lptr - line), flib);
-		    fileCurrentLine++;
-		    if (result == NULL) break;
+		    // To be considered a line continuation marker, there must be
+		    // only whitespace or newline between the backslash and the
+		    // end of the string.
+		    char *eptr = lptr + 1;
+		    while (isspace(*eptr)) eptr++;
+		    if (*eptr == '\0') {
+		        result = fgets(lptr, LIB_LINE_MAX - (lptr - line), flib);
+		        fileCurrentLine++;
+		        if (result == NULL) break;
+		    }
+		    else
+			lptr++;
 		}
 		else
 		    lptr++;
@@ -684,6 +704,34 @@ double calc_transition(double trans, netptr loadnet, pinptr testpin, short sense
     return (transr > transf) ? transr : transf;
 }
 
+/*----------------------------------------------------------------------*/
+/* Calculate the setup time for a flop input "testpin" relative to the	*/
+/* flop clock, where "trans" is the transition time of the signal at	*/
+/* "testpin", and "clktrans" is the transition time of the clock	*/
+/* signal at the clock pin.  "sense" is the sense of the input signal	*/
+/* at "testpin".							*/
+/*----------------------------------------------------------------------*/
+
+double calc_setup_time(double trans, pinptr testpin, double clktrans, short sense)
+{
+    double setupr, setupf;
+
+    if (testpin == NULL) return 0.0;
+
+    setupr = 0.0;
+    setupf = 0.0;
+
+    if (sense != SENSE_NEGATIVE)
+	if (testpin->propdelr)
+	    setupr = binomial_get_value(testpin->propdelr, trans, clktrans);
+
+    if (sense != SENSE_POSITIVE)
+	if (testpin->propdelf)
+	    setupf = binomial_get_value(testpin->propdelf, trans, clktrans);
+
+    return (setupr > setupf) ? setupr : setupf;
+}
+
 /*--------------------------------------------------------------*/
 /* Find the path from a clock back to all inputs or flop	*/
 /* outputs.  This list will be used to find nodes that are	*/
@@ -860,6 +908,12 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     numpaths = 0;
     testpin = receiver->refpin;
 
+    // Check for a logic loop, and truncate the path to avoid infinite
+    // looping in the path search.
+
+    if (receiver->tag == (ddataptr)(-1)) return numpaths;
+    else if (receiver->tag == NULL) receiver->tag = (ddataptr)(-1);
+
     // Record this position and delay/transition information
 
     newbtdata = (btptr)malloc(sizeof(btdata));
@@ -901,11 +955,16 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 		numpaths += find_path_delay(FALLING, newdelayf, newtransf,
 			loadnet->receivers[i], newbtdata, delaylist);
 	}
+	receiver->tag = NULL;
     }
     else {
 
-	/* Determine if receiver is in delaylist */
-	for (testddata = *delaylist; testddata; testddata = testddata->next) {
+	/* Is receiver already in delaylist? */
+	if ((receiver->tag != (ddataptr)(-1)) && (receiver->tag != NULL)) {
+
+	    /* Position in delaylist is recorded in tag field */
+	    testddata = receiver->tag;
+
 	    if (testddata->backtrace->receiver == receiver) {
 		/* Is delay greater than that already recorded?  If so, replace it */
 		if (delay > testddata->backtrace->delay) {
@@ -923,9 +982,12 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 		    for (testbt = newbtdata; testbt; testbt = testbt->next)
 			testbt->refcnt++;
 		}
-		break;
 	    }
+	    else
+		fprintf(stderr, "ERROR:  Bad endpoint tag!\n");
 	}
+	else
+	    testddata = NULL;
 
 	// If we have found a propagation path from source to dest,
 	// record it in delaylist.
@@ -933,9 +995,13 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 	if (testddata == NULL) {
 	    numpaths++;
 	    newddata = (ddataptr)malloc(sizeof(delaydata));
+	    newddata->delay = 0.0;
 	    newddata->backtrace = newbtdata;
 	    newddata->next = *delaylist;
 	    *delaylist = newddata;
+
+	    /* Mark the receiver as having been visited */
+	    receiver->tag = *delaylist;
 
 	    /* Increment the refcounts along the backtrace */
 	    for (testbt = newbtdata; testbt; testbt = testbt->next)
@@ -1056,7 +1122,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
     ddataptr	freeddata;
 
     short	srcdir, destdir;		// Signal direction in/out
-    double	tdriver, totaldelay;
+    double	tdriver, setupdelay;
     char	clk_sense_inv, clk_invert;
     int		numpaths, n;
 
@@ -1084,17 +1150,22 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 	else
 	    tdriver = selectedsource->trans;
 
+	// Report on paths and their maximum delays
+	if (verbose > 0) {
+	    fprintf(stdout, "Paths starting at flop \"%s\" clock:\n\n",
+			thisconn->refinst->name);
+	    fflush(stdout);
+	}
+
 	// Find all paths from "thisconn" to output or a flop input, and compute delay
 	n = find_path_delay(srcdir, 0.0, tdriver, thisconn, NULL, &delaylist);
 	numpaths += n;
 
-	// Report on paths and their maximum delays
-	if (verbose > 0)
-	    fprintf(stdout, "%d Paths starting at flop \"%s\" clock:\n\n",
-			n, thisconn->refinst->name);
+	if (verbose > 0) fprintf(stdout, "%d paths traced (%d total).\n\n", n, numpaths);
 
 	for (testddata = delaylist; testddata; testddata = testddata->next) {
-	    totaldelay = testddata->backtrace->delay;
+	    // Copy last backtrace delay to testddata.
+	    testddata->delay = testddata->backtrace->delay;
 	    testinst = testddata->backtrace->receiver->refinst;
 
 	    if (testinst != NULL) {
@@ -1121,8 +1192,8 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 		    // destination clocks
 
 		    if (selecteddest != NULL && selectedsource != NULL) {
-			totaldelay += selecteddest->delay;
-			totaldelay -= selectedsource->delay;
+			testddata->delay += selecteddest->delay;
+			testddata->delay -= selectedsource->delay;
 
 			/* Check if the clock signal arrives at both flops with the	*/
 			/* same edge type (both rising or both falling).		*/
@@ -1134,11 +1205,15 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 		    }
 
 		    // Add setup time for destination clocks
-		    // (to be done)
+		    setupdelay = calc_setup_time(testddata->backtrace->trans,
+					testddata->backtrace->receiver->refpin,
+					selecteddest->trans,
+					testddata->backtrace->dir);
+		    testddata->delay += setupdelay;
 
 		    if (verbose > 0)
 			fprintf(stdout, "Path terminated on flop \"%s\" input with max delay %g ps\n",
-				testconn->refinst->name, totaldelay);
+				testconn->refinst->name, testddata->delay);
 
 		    for (backtrace = testddata->backtrace; backtrace->next;
 				backtrace = backtrace->next) {
@@ -1162,7 +1237,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 		    if (selecteddest != NULL && selectedsource != NULL) {
 			if (verbose > 0) {
 			    if (selectedsource->receiver->refnet != selecteddest->receiver->refnet) {
-				fprintf(stdout, "   %g %s to %s clock time difference\n",
+				fprintf(stdout, "   %g %s to %s clock skew\n",
 					selecteddest->delay - selectedsource->delay,
 					selectedsource->receiver->refnet->name,
 					selecteddest->receiver->refnet->name);
@@ -1187,12 +1262,18 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 			    fprintf(stdout, "   implying a maximum propagation delay of 1/2 period.\n");
 			}
 		    }
+		    if (selecteddest != NULL && selectedsource != NULL) {
+			if (verbose > 0) {
+			    fprintf(stdout, "   %g setup time at destination\n", setupdelay);
+			}
+		    }
+
 		    if (verbose > 0) fprintf(stdout, "\n");
 		}
 	    }
 	    else if (verbose > 0) {
 		fprintf(stdout, "Path terminated on output \"%s\" with max delay %g ps\n",
-				testddata->backtrace->receiver->refnet->name, totaldelay);
+				testddata->backtrace->receiver->refnet->name, testddata->delay);
 
 		backtrace = testddata->backtrace;
 		fprintf(stdout, "   %g (%s) %s/%s -> [output pin]\n",
@@ -1230,7 +1311,10 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 	// delaylist for the next set of paths.
 
 	if (delaylist) {
-	    for (testddata = delaylist; testddata->next; testddata = testddata->next);
+	    for (testddata = delaylist; testddata->next; testddata = testddata->next)
+		testddata->backtrace->receiver->tag = NULL;
+
+	    testddata->backtrace->receiver->tag = NULL;
 	    testddata->next = *masterlist;
 	    *masterlist = delaylist;
 	    delaylist = NULL;
@@ -1284,12 +1368,14 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
     int i, j;
     double gval;
     char *iptr;
+    short timing_type;
 
     lutable *newtable, *reftable;
     cell *newcell, *lastcell;
     pin *newpin;
 
     lastcell = NULL;
+    timing_type = UNKNOWN;
 
     /* Read tokens off of the line */
     token = advancetoken(flib, 0);
@@ -1855,30 +1941,40 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		}
 		else if (!strcasecmp(token, "timing_type")) {
 		    token = advancetoken(flib, 0);	// Colon
+		    token = advancetoken(flib, ';');	// Read to end of statement
 
 		    // Note:  Timing type is apparently redundant information;
 		    // e.g., "falling_edge" can be determined by "clocked_on : !CLK"
 		    // in the ff {} block.  How reliable is this?
 
-		    /*-----------------------------------------
 		    if (!strcasecmp(token, "rising_edge"))
+			timing_type = TIMING_PROP_TRANS;
 		    else if (!strcasecmp(token, "falling_edge"))
+			timing_type = TIMING_PROP_TRANS;
 		    else if (!strcasecmp(token, "hold_rising"))
+			timing_type = TIMING_HOLD;
 		    else if (!strcasecmp(token, "hold_falling"))
+			timing_type = TIMING_HOLD;
 		    else if (!strcasecmp(token, "setup_rising"))
+			timing_type = TIMING_SETUP;
 		    else if (!strcasecmp(token, "setup_falling"))
+			timing_type = TIMING_SETUP;
 		    else if (!strcasecmp(token, "clear"))
+			timing_type = TIMING_SET_RESET;
 		    else if (!strcasecmp(token, "preset"))
+			timing_type = TIMING_SET_RESET;
 		    else if (!strcasecmp(token, "recovery_rising"))
+			timing_type = TIMING_RECOVERY;
 		    else if (!strcasecmp(token, "recovery_falling"))
+			timing_type = TIMING_RECOVERY;
 		    else if (!strcasecmp(token, "removal_rising"))
+			timing_type = TIMING_REMOVAL;
 		    else if (!strcasecmp(token, "removal_falling"))
+			timing_type = TIMING_REMOVAL;
 		    else if (!strcasecmp(token, "three_state_enable"))
+			timing_type = TIMING_TRISTATE;
 		    else if (!strcasecmp(token, "three_state_disable"))
-		    -----------------------------------------*/
-
-		    token = advancetoken(flib, ';');	// Read to end of statement
-		
+			timing_type = TIMING_TRISTATE;
 		}
 		else if ((!strcasecmp(token, "cell_rise")) ||
 			(!strcasecmp(token, "cell_fall")) ||
@@ -1916,10 +2012,18 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			testpin->transr = tableptr;
 		    else if (!strcasecmp(token, "fall_transition"))
 			testpin->transf = tableptr;
-		    else if (!strcasecmp(token, "rise_constraint"))
-			newpin->propdelr = tableptr;
-		    else if (!strcasecmp(token, "fall_constraint"))
-			newpin->propdelr = tableptr;
+		    else if (!strcasecmp(token, "rise_constraint")) {
+			if (timing_type == TIMING_SETUP)
+			    newpin->propdelr = tableptr;
+			else if (timing_type == TIMING_HOLD)
+			    newpin->transr = tableptr;
+		    }
+		    else if (!strcasecmp(token, "fall_constraint")) {
+			if (timing_type == TIMING_SETUP)
+			    newpin->propdelf = tableptr;
+			else if (timing_type == TIMING_HOLD)
+			    newpin->transf = tableptr;
+		    }
 
 		    token = advancetoken(flib, 0);	// Open parens
 		    if (!strcmp(token, "("))
@@ -2201,6 +2305,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			testconn->refnet = newnet;
 			testconn->refpin = NULL;	// No associated pin
 			testconn->refinst = NULL;	// No associated instance
+			testconn->tag = NULL;
 
 			if (isinput) {			// driver (input)
 			    testconn->next = *inputlist;
@@ -2224,6 +2329,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			    testconn->refnet = newnet;
 			    testconn->refpin = NULL;	// No associated pin
 			    testconn->refinst = NULL;	// No associated instance
+			    testconn->tag = NULL;
 
 			    if (isinput) {		// driver (input)
 				testconn->next = *inputlist;
@@ -2301,6 +2407,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 		    newconn->refinst = newinst;
 		    newconn->refpin = testpin;
 		    newconn->refnet = NULL;
+		    newconn->tag = NULL;
 		    token = advancetoken(fsrc, '(');	// Read to beginning of pin name
 		    section = PINCONN;
 		}
@@ -2422,6 +2529,7 @@ int assign_net_types(netptr netlist, connlistptr *clockedlist)
 	    }
 	}
     }
+    return numterms;
 }
 
 /*--------------------------------------------------------------*/
@@ -2508,9 +2616,9 @@ compdelay(ddataptr *a, ddataptr *b)
     ddataptr p = *a;
     ddataptr q = *b;
 
-    if (p->backtrace->delay < q->backtrace->delay)
+    if (p->delay < q->delay)
 	return (1);
-    if (p->backtrace->delay > q->backtrace->delay)
+    if (p->delay > q->delay)
 	return (-1);
     return (0);
 }
@@ -2745,10 +2853,10 @@ main(int objc, char *argv[])
 		testbt->receiver->refpin->name,
 		testddata->backtrace->receiver->refinst->name,
 		testddata->backtrace->receiver->refpin->name,
-		testddata->backtrace->delay);
+		testddata->delay);
 
 	if (period > 0.0) {
-	    slack = period - testddata->backtrace->delay;
+	    slack = period - testddata->delay;
 	    fprintf(stdout, "   Slack = %g ps", slack);
 	    if (slack < 0.0) badtiming = 1;
 	}
@@ -2765,7 +2873,7 @@ main(int objc, char *argv[])
     }
     else {
 	fprintf(stdout, "Computed maximum clock frequency (zero slack) = %g MHz\n",
-		(1.0E6 / orderedpaths[0]->backtrace->delay));
+		(1.0E6 / orderedpaths[0]->delay));
     }
 
     /*--------------------------------------------------*/
