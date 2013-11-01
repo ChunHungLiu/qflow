@@ -304,10 +304,9 @@ if ( ! -f ${userfile} ) then
    echo "# set qrouter_options = " >> ${userfile}
    echo ""
    echo "" >> ${userfile}
-   # Add this in when the STA tool is done!
-   # echo "# Maximum operating frequency of the clock" >> ${userfile}
-   # echo "# set max_frequency =	10E6" >> ${userfile}
-   # echo "" >> ${userfile}
+   echo "# Minimum operating period of the clock (in ps)" >> ${userfile}
+   echo "# set vesta_options = --fastmode --period 1E5" >> ${userfile}
+   echo "" >> ${userfile}
    echo "#------------------------------------------------------------" >> ${userfile}
    echo "" >> ${userfile}
 endif
@@ -341,7 +340,7 @@ echo "${scriptdir}/placement.sh -d ${projectpath} ${modulename}" >> ${execfile}
 if ($dosta == 0) then
    echo -n "# " >> ${execfile}
 endif
-echo "${scriptdir}/vesta.sh ${projectpath} ${modulename}" >> ${execfile}
+echo "${scriptdir}/vesta.sh -f ${projectpath} ${modulename}" >> ${execfile}
 
 if ($doroute == 0) then
    echo -n "# " >> ${execfile}

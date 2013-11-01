@@ -47,7 +47,7 @@ source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 if (! ${?vesta_options} ) then
-   set vesta_options = ""
+   set vesta_options = ${options}
 endif
 
 #----------------------------------------------------------

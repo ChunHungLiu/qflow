@@ -48,7 +48,7 @@ source ${techdir}/${techname}.sh
 cd ${projectpath}
 
 if (! ${?qrouter_options} ) then
-   set qrouter_options = ""
+   set qrouter_options = ${options}
 endif
 
 #----------------------------------------------------------

@@ -15,7 +15,7 @@
 /*		-d <delay_file>	Wiring delays (see below)	*/
 /*		-p <value>  	Clock period, in ps		*/
 /*		-l <value>	Output load, in fF		*/
-/*		-v		set verbose mode		*/
+/*		-v <level>	set verbose mode		*/
 /*		-V		report version number		*/
 /*								*/
 /*	Currently the only output this tool generates is a	*/
@@ -259,11 +259,12 @@ typedef struct _net {
 typedef struct _instance *instptr;
 
 typedef struct _connect {
-   instptr refinst;
-   pinptr  refpin;
-   netptr  refnet;
+   double   metric;		/* Delay metric at connection */
+   instptr  refinst;
+   pinptr   refpin;
+   netptr   refnet;
    ddataptr tag;		/* Tag value for checking for loops and endpoints */
-   connptr next;
+   connptr  next;
 } connect;
 
 typedef struct _instance {
@@ -291,6 +292,7 @@ typedef struct _btdata {
 
 typedef struct _delaydata {
    double delay;	/* Total delay, including setup and clock skew */
+   double trans;	/* Transition time at destination, used to find setup */
    btptr backtrace;
    ddataptr  next;
 } delaydata;
@@ -307,7 +309,8 @@ typedef struct _connlist {
 
 /* Global variables */
 
-int verbose;		/* Level of debug output generated */
+unsigned char verbose;		/* Level of debug output generated */
+unsigned char fastmode;		/* Fast mode, less accuracy */
 
 /*--------------------------------------------------------------*/
 /* Grab a token from the input					*/
@@ -908,6 +911,21 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     numpaths = 0;
     testpin = receiver->refpin;
 
+    // Prevent exhaustive search by stopping on a metric.  Note that the
+    // nonlinear table-based delay data requires an exhaustive search;
+    // generally, the tables can be assumed to be monotonic, in which case
+    // we can stop if the delay is less than the greatest delay recorded
+    // at this point AND the transition time is less than the transition
+    // time recorded along with that delay.  A more relaxed metric is to
+    // use the delay plus the transition time, and an even more relaxed
+    // metric is to use only the delay.  Any relaxing of the metric
+    // implies that the final result may not be the absolute maximum delay,
+    // although it will typically vary by less than an average gate delay.
+
+    if (fastmode)
+	if (delay <= receiver->metric)
+	    return numpaths;
+
     // Check for a logic loop, and truncate the path to avoid infinite
     // looping in the path search.
 
@@ -923,6 +941,8 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     newbtdata->receiver = receiver;
     newbtdata->refcnt = 1;
     newbtdata->next = backtrace;
+
+    receiver->metric = delay;
 
     // Stop when we hit a module output pin or any flop/latch input.
     // We must allow the routine to pass through the 1st register clock (on the first
@@ -996,6 +1016,7 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 	    numpaths++;
 	    newddata = (ddataptr)malloc(sizeof(delaydata));
 	    newddata->delay = 0.0;
+	    newddata->trans = 0.0;
 	    newddata->backtrace = newbtdata;
 	    newddata->next = *delaylist;
 	    *delaylist = newddata;
@@ -1108,7 +1129,7 @@ short find_edge_dir(short dir, netptr sourcenet, netptr destnet) {
 /* Return value is the number of paths recorded in masterlist.	*/
 /*--------------------------------------------------------------*/
 
-int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
+int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, instptr instlist)
 {
     netptr	commonclock;
     connptr     testconn, thisconn;
@@ -1166,6 +1187,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 	for (testddata = delaylist; testddata; testddata = testddata->next) {
 	    // Copy last backtrace delay to testddata.
 	    testddata->delay = testddata->backtrace->delay;
+	    testddata->trans = testddata->backtrace->trans;
 	    testinst = testddata->backtrace->receiver->refinst;
 
 	    if (testinst != NULL) {
@@ -1205,7 +1227,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 		    }
 
 		    // Add setup time for destination clocks
-		    setupdelay = calc_setup_time(testddata->backtrace->trans,
+		    setupdelay = calc_setup_time(testddata->trans,
 					testddata->backtrace->receiver->refpin,
 					selecteddest->trans,
 					testddata->backtrace->dir);
@@ -1307,14 +1329,20 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist)
 	    }
 	}
 
+	// Remove all tags and reset delay metrics
+
+	for (testinst = instlist; testinst; testinst = testinst->next) {
+	    for (testconn = testinst->in_connects; testconn; testconn = testconn->next) {
+		testconn->tag = NULL;
+		testconn->metric = -1.0;
+	    }
+	}
+
 	// Link delaylist data to the beginning of masterlist, and null out
 	// delaylist for the next set of paths.
 
 	if (delaylist) {
-	    for (testddata = delaylist; testddata->next; testddata = testddata->next)
-		testddata->backtrace->receiver->tag = NULL;
-
-	    testddata->backtrace->receiver->tag = NULL;
+	    for (testddata = delaylist; testddata->next; testddata = testddata->next) ;
 	    testddata->next = *masterlist;
 	    *masterlist = delaylist;
 	    delaylist = NULL;
@@ -2306,6 +2334,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			testconn->refpin = NULL;	// No associated pin
 			testconn->refinst = NULL;	// No associated instance
 			testconn->tag = NULL;
+			testconn->metric = -1.0;
 
 			if (isinput) {			// driver (input)
 			    testconn->next = *inputlist;
@@ -2330,6 +2359,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			    testconn->refpin = NULL;	// No associated pin
 			    testconn->refinst = NULL;	// No associated instance
 			    testconn->tag = NULL;
+			    testconn->metric = -1.0;
 
 			    if (isinput) {		// driver (input)
 				testconn->next = *inputlist;
@@ -2408,6 +2438,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 		    newconn->refpin = testpin;
 		    newconn->refnet = NULL;
 		    newconn->tag = NULL;
+		    newconn->metric = -1.0;
 		    token = advancetoken(fsrc, '(');	// Read to beginning of pin name
 		    section = PINCONN;
 		}
@@ -2436,11 +2467,13 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 		}
 		else
 		    newconn->refnet = testnet;
-		token = advancetoken(fsrc, ')');	// Read to end of pin name
 		section = INSTPIN;
 		break;
 	}
-	token = advancetoken(fsrc, 0);
+	if (section == PINCONN)
+	    token = advancetoken(fsrc, ')');	// Name token parsing
+	else
+	    token = advancetoken(fsrc, 0);
     }
 }
 
@@ -2660,6 +2693,7 @@ main(int objc, char *argv[])
     double	slack;
 
     verbose = 0;
+    fastmode = 0;
 
     while ((firstarg < objc) && (*argv[firstarg] == '-')) {
        if (!strcmp(argv[firstarg], "-d") || !strcmp(argv[firstarg], "--delay")) {
@@ -2681,6 +2715,10 @@ main(int objc, char *argv[])
        else if (!strcmp(argv[firstarg], "-v") || !strcmp(argv[firstarg], "--verbose")) {
 	  sscanf(argv[firstarg + 1], "%d", &verbose);
 	  firstarg += 2;
+       }
+       else if (!strcmp(argv[firstarg], "-f") || !strcmp(argv[firstarg], "--fastmode")) {
+	  fastmode = 1;
+	  firstarg++;
        }
        else if (!strcmp(argv[firstarg], "--version")) {
 	  fprintf(stderr, "Vesta Static Timing Analzyer version 0.1\n");
@@ -2820,7 +2858,7 @@ main(int objc, char *argv[])
     /* Identify all clock-to-terminal paths		*/
     /*--------------------------------------------------*/
 
-    numpaths = find_clock_to_term_paths(clockconnlist, &pathlist);
+    numpaths = find_clock_to_term_paths(clockconnlist, &pathlist, instlist);
     fprintf(stdout, "Number of paths analyzed:  %d\n", numpaths);
 
     /*--------------------------------------------------*/
