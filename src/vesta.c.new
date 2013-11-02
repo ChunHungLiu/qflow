@@ -17,7 +17,6 @@
 /*		-l <value>	Output load, in fF		*/
 /*		-v <level>	set verbose mode		*/
 /*		-V		report version number		*/
-/*		-e		exhaustive search		*/
 /*								*/
 /*	Currently the only output this tool generates is a	*/
 /*	list of paths with negative slack.  If no paths have	*/
@@ -243,6 +242,16 @@ typedef struct _cell {
 /* Verilog netlist database					*/
 /*--------------------------------------------------------------*/
 
+/* Structure for holding a set of delay metrics */
+
+typedef struct _dmetric *dmetricptr;
+
+typedef struct _dmetric {
+    double delay;
+    double trans;
+    dmetricptr next;
+} dmetric;
+
 typedef struct _net *netptr;
 typedef struct _connect *connptr;
 typedef struct _delaydata *ddataptr;
@@ -261,7 +270,7 @@ typedef struct _net {
 typedef struct _instance *instptr;
 
 typedef struct _connect {
-   double   metric;		/* Delay metric at connection */
+   dmetricptr metric;		/* Delay metrics at connection */
    instptr  refinst;
    pinptr   refpin;
    netptr   refnet;
@@ -316,7 +325,7 @@ typedef struct _connlist {
 /* Global variables */
 
 unsigned char verbose;		/* Level of debug output generated */
-unsigned char exhaustive;	/* Exhaustive search mode */
+unsigned char fastmode;		/* Fast mode, less accuracy */
 
 /*--------------------------------------------------------------*/
 /* Grab a token from the input					*/
@@ -995,6 +1004,7 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     double   newdelayr, newdelayf, newtransr, newtransf;
     short    outdir;
     int	     i, numpaths;
+    dmetricptr newdm, testdm;
 
     numpaths = 0;
     testpin = receiver->refpin;
@@ -1010,9 +1020,15 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     // implies that the final result may not be the absolute maximum delay,
     // although it will typically vary by less than an average gate delay.
 
-    if (!exhaustive)
-	if (delay <= receiver->metric)
+    if (fastmode && (receiver->metric != NULL)) {
+	if (delay <= receiver->metric->delay)
 	    return numpaths;
+    }
+    else {
+	for (testdm = receiver->metric; testdm; testdm = testdm->next)
+	    if ((delay <= testdm->delay) && (trans <= testdm->trans))
+		return numpaths;
+    }
 
     // Check for a logic loop, and truncate the path to avoid infinite
     // looping in the path search.
@@ -1029,6 +1045,16 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     newbtdata->receiver = receiver;
     newbtdata->refcnt = 1;
     newbtdata->next = backtrace;
+
+    if ((fastmode == 0) || (receiver->metric == NULL)) {
+	newdm = (dmetricptr)malloc(sizeof(dmetric));
+	newdm->delay = delay;
+	newdm->trans = trans;
+	newdm->next = receiver->metric;
+	receiver->metric = newdm;
+    }
+    else if (fastmode) 
+	receiver->metric->delay = delay;
 
     // Stop when we hit a module output pin or any flop/latch input.
     // We must allow the routine to pass through the 1st register clock (on the first
@@ -1113,10 +1139,8 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 	    for (testbt = newbtdata; testbt; testbt = testbt->next)
 		testbt->refcnt++;
 	}
-
     }
 
-    receiver->metric = delay;
     newbtdata->refcnt--;
     if (newbtdata->refcnt <= 0) free(newbtdata);
     return numpaths;
@@ -1228,6 +1252,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
     btptr	selectedsource, selecteddest;
     ddataptr    delaylist, testddata;
     ddataptr	freeddata;
+    dmetricptr	testdm;
 
     short	srcdir, destdir;		// Signal direction in/out
     double	tdriver, setupdelay;
@@ -1421,7 +1446,11 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 	for (testinst = instlist; testinst; testinst = testinst->next) {
 	    for (testconn = testinst->in_connects; testconn; testconn = testconn->next) {
 		testconn->tag = NULL;
-		testconn->metric = -1.0;
+		while (testconn->metric != NULL) {
+		    testdm = testconn->metric->next;
+		    free(testconn->metric);
+		    testconn->metric = testdm;
+		}
 	    }
 	}
 
@@ -1429,7 +1458,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 	// delaylist for the next set of paths.
 
 	if (delaylist) {
-	    for (testddata = delaylist; testddata->next; testddata = testddata->next);
+	    for (testddata = delaylist; testddata->next; testddata = testddata->next) ;
 	    testddata->next = *masterlist;
 	    *masterlist = delaylist;
 	    delaylist = NULL;
@@ -2421,7 +2450,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			testconn->refpin = NULL;	// No associated pin
 			testconn->refinst = NULL;	// No associated instance
 			testconn->tag = NULL;
-			testconn->metric = -1.0;
+			testconn->metric = NULL;
 			testconn->prvector = NULL;
 			testconn->pfvector = NULL;
 			testconn->trvector = NULL;
@@ -2450,7 +2479,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 			    testconn->refpin = NULL;	// No associated pin
 			    testconn->refinst = NULL;	// No associated instance
 			    testconn->tag = NULL;
-			    testconn->metric = -1.0;
+			    testconn->metric = NULL;
 			    testconn->prvector = NULL;
 			    testconn->pfvector = NULL;
 			    testconn->trvector = NULL;
@@ -2533,7 +2562,7 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 		    newconn->refpin = testpin;
 		    newconn->refnet = NULL;
 		    newconn->tag = NULL;
-		    newconn->metric = -1.0;
+		    newconn->metric = NULL;
 		    newconn->prvector = NULL;
 		    newconn->pfvector = NULL;
 		    newconn->trvector = NULL;
@@ -2790,7 +2819,7 @@ main(int objc, char *argv[])
     double outLoad = 0.0;
     double inTrans = 0.0;
     char *delayfile = NULL;
-    int ival, firstarg = 1;
+    int firstarg = 1;
 
     // Liberty database
 
@@ -2814,7 +2843,7 @@ main(int objc, char *argv[])
     double	slack;
 
     verbose = 0;
-    exhaustive = 0;
+    fastmode = 0;
 
     while ((firstarg < objc) && (*argv[firstarg] == '-')) {
        if (!strcmp(argv[firstarg], "-d") || !strcmp(argv[firstarg], "--delay")) {
@@ -2834,16 +2863,15 @@ main(int objc, char *argv[])
 	  firstarg += 2;
        }
        else if (!strcmp(argv[firstarg], "-v") || !strcmp(argv[firstarg], "--verbose")) {
-	  sscanf(argv[firstarg + 1], "%d", &ival);
-	  verbose = (unsigned char)ival;
+	  sscanf(argv[firstarg + 1], "%d", &verbose);
 	  firstarg += 2;
        }
-       else if (!strcmp(argv[firstarg], "-e") || !strcmp(argv[firstarg], "--exhaustive")) {
-	  exhaustive = 1;
+       else if (!strcmp(argv[firstarg], "-f") || !strcmp(argv[firstarg], "--fastmode")) {
+	  fastmode = 1;
 	  firstarg++;
        }
-       else if (!strcmp(argv[firstarg], "-V") || !strcmp(argv[firstarg], "--version")) {
-	  fprintf(stderr, "Vesta Static Timing Analzyer version 0.2\n");
+       else if (!strcmp(argv[firstarg], "--version")) {
+	  fprintf(stderr, "Vesta Static Timing Analzyer version 0.1\n");
 	  exit(0);
        }
        else {
@@ -2859,8 +2887,7 @@ main(int objc, char *argv[])
 	fprintf(stderr, "--period <period>	or	-p <period>\n");
 	fprintf(stderr, "--load <load>		or	-l <load>\n");
 	fprintf(stderr, "--verbose <level>	or	-v <level>\n");
-	fprintf(stderr, "--exhaustive		or 	-e\n");
-	fprintf(stderr, "--version		or	-V\n");
+	fprintf(stderr, "--version\n");
 	exit (1);
     }
     else {

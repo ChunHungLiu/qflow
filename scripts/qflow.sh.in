@@ -305,7 +305,7 @@ if ( ! -f ${userfile} ) then
    echo ""
    echo "" >> ${userfile}
    echo "# Minimum operating period of the clock (in ps)" >> ${userfile}
-   echo "# set vesta_options = --fastmode --period 1E5" >> ${userfile}
+   echo "# set vesta_options = --period 1E5" >> ${userfile}
    echo "" >> ${userfile}
    echo "#------------------------------------------------------------" >> ${userfile}
    echo "" >> ${userfile}
@@ -340,7 +340,7 @@ echo "${scriptdir}/placement.sh -d ${projectpath} ${modulename}" >> ${execfile}
 if ($dosta == 0) then
    echo -n "# " >> ${execfile}
 endif
-echo "${scriptdir}/vesta.sh -f ${projectpath} ${modulename}" >> ${execfile}
+echo "${scriptdir}/vesta.sh ${projectpath} ${modulename}" >> ${execfile}
 
 if ($doroute == 0) then
    echo -n "# " >> ${execfile}
