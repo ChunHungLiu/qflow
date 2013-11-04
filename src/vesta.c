@@ -57,6 +57,14 @@
 
 int fileCurrentLine;
 
+// Analysis types --- note that maximum flop-to-flop delay
+// requires calculating minimum clock skew time, and vice
+// versa, so it is necessary that these have TRUE/FALSE
+// values.
+
+#define MINIMUM_TIME	0
+#define MAXIMUM_TIME	1
+
 // Multiple-use definition
 #define	UNKNOWN		-1
 
@@ -742,7 +750,7 @@ short calc_dir(pinptr testpin, short dir)
 /* containing the relevant timing tables.				*/
 /*----------------------------------------------------------------------*/
 
-double calc_prop_delay(double trans, connptr testconn, short sense)
+double calc_prop_delay(double trans, connptr testconn, short sense, char minmax)
 {
     pinptr testpin;
     double propdelayr, propdelayf;
@@ -756,14 +764,19 @@ double calc_prop_delay(double trans, connptr testconn, short sense)
     if (sense != SENSE_NEGATIVE) {
 	if (testconn->prvector)
 	    propdelayr = vector_get_value(testpin->propdelr, testconn->prvector, trans);
+	if (sense == SENSE_POSITIVE) return propdelayr;
     }
 
     if (sense != SENSE_POSITIVE) {
 	if (testconn->pfvector)
 	    propdelayf = vector_get_value(testpin->propdelf, testconn->pfvector, trans);
+	if (sense == SENSE_NEGATIVE) return propdelayf;
     }
 
-    return (propdelayr > propdelayf) ? propdelayr : propdelayf;
+    if (minmax == MAXIMUM_TIME)
+	return (propdelayr > propdelayf) ? propdelayr : propdelayf;
+    else
+	return (propdelayr < propdelayf) ? propdelayr : propdelayf;
 }
 
 /*----------------------------------------------------------------------*/
@@ -773,7 +786,7 @@ double calc_prop_delay(double trans, connptr testconn, short sense)
 /* the lookup tables for transition time instead of propagation delay.	*/
 /*----------------------------------------------------------------------*/
 
-double calc_transition(double trans, connptr testconn, short sense)
+double calc_transition(double trans, connptr testconn, short sense, char minmax)
 {
     pinptr testpin;
     double transr, transf;
@@ -784,15 +797,58 @@ double calc_transition(double trans, connptr testconn, short sense)
     transr = 0.0;
     transf = 0.0;
 
-    if (sense != SENSE_NEGATIVE)
+    if (sense != SENSE_NEGATIVE) {
 	if (testconn->trvector)
 	    transr = vector_get_value(testpin->transr, testconn->trvector, trans);
+	if (sense == SENSE_POSITIVE) return transr;
+    }
 
-    if (sense != SENSE_POSITIVE)
+    if (sense != SENSE_POSITIVE) {
 	if (testconn->tfvector)
 	    transf = vector_get_value(testpin->transf, testconn->tfvector, trans);
+	if (sense == SENSE_NEGATIVE) return transf;
+    }
 
-    return (transr > transf) ? transr : transf;
+    if (minmax == MAXIMUM_TIME)
+	return (transr > transf) ? transr : transf;
+    else
+	return (transr < transf) ? transr : transf;
+}
+
+/*----------------------------------------------------------------------*/
+/* Calculate the hold time for a flop input "testpin" relative to the	*/
+/* flop clock, where "trans" is the transition time of the signal at	*/
+/* "testpin", and "clktrans" is the transition time of the clock	*/
+/* signal at the clock pin.  "sense" is the sense of the input signal	*/
+/* at "testpin".							*/
+/*----------------------------------------------------------------------*/
+
+double calc_hold_time(double trans, pinptr testpin, double clktrans, short sense,
+		char minmax)
+{
+    double holdr, holdf;
+
+    if (testpin == NULL) return 0.0;
+
+    holdr = 0.0;
+    holdf = 0.0;
+
+    if (sense != SENSE_NEGATIVE) {
+	if (testpin->transr)
+	    holdr = binomial_get_value(testpin->transr, trans, clktrans);
+	if (sense == SENSE_POSITIVE) return holdr;
+    }
+
+    if (sense != SENSE_POSITIVE) {
+	if (testpin->transf)
+	    holdf = binomial_get_value(testpin->transf, trans, clktrans);
+	if (sense == SENSE_NEGATIVE) return holdf;
+    }
+
+    if (minmax == MAXIMUM_TIME)
+	return (holdr > holdf) ? holdr : holdf;
+    else
+	return (holdr < holdf) ? holdr : holdf;
 }
 
 /*----------------------------------------------------------------------*/
@@ -803,7 +859,8 @@ double calc_transition(double trans, connptr testconn, short sense)
 /* at "testpin".							*/
 /*----------------------------------------------------------------------*/
 
-double calc_setup_time(double trans, pinptr testpin, double clktrans, short sense)
+double calc_setup_time(double trans, pinptr testpin, double clktrans, short sense,
+		char minmax)
 {
     double setupr, setupf;
 
@@ -812,15 +869,22 @@ double calc_setup_time(double trans, pinptr testpin, double clktrans, short sens
     setupr = 0.0;
     setupf = 0.0;
 
-    if (sense != SENSE_NEGATIVE)
+    if (sense != SENSE_NEGATIVE) {
 	if (testpin->propdelr)
 	    setupr = binomial_get_value(testpin->propdelr, trans, clktrans);
+	if (sense == SENSE_POSITIVE) return setupr;
+    }
 
-    if (sense != SENSE_POSITIVE)
+    if (sense != SENSE_POSITIVE) {
 	if (testpin->propdelf)
 	    setupf = binomial_get_value(testpin->propdelf, trans, clktrans);
+	if (sense == SENSE_NEGATIVE) return setupf;
+    }
 
-    return (setupr > setupf) ? setupr : setupf;
+    if (minmax == MAXIMUM_TIME)
+	return (setupr > setupf) ? setupr : setupf;
+    else
+	return (setupr < setupf) ? setupr : setupf;
 }
 
 /*--------------------------------------------------------------*/
@@ -898,7 +962,7 @@ netptr find_common_clock(btptr clocklist, btptr clock2list)
 
 void
 find_clock_delay(int dir, double delay, double trans, connptr receiver,
-		btptr clocklist, connptr terminal) {
+		btptr clocklist, connptr terminal, char minmax) {
 
     pinptr  testpin;
     netptr  loadnet;
@@ -925,12 +989,12 @@ find_clock_delay(int dir, double delay, double trans, connptr receiver,
 
 	outdir = calc_dir(testpin, dir);
 	if (outdir & RISING) {
-	    newdelayr = delay + calc_prop_delay(trans, receiver, RISING);
-	    newtransr = calc_transition(trans, receiver, RISING);
+	    newdelayr = delay + calc_prop_delay(trans, receiver, RISING, minmax);
+	    newtransr = calc_transition(trans, receiver, RISING, minmax);
 	}
 	if (outdir & FALLING) {
-	    newdelayf = delay + calc_prop_delay(trans, receiver, FALLING);
-	    newtransf = calc_transition(trans, receiver, FALLING);
+	    newdelayf = delay + calc_prop_delay(trans, receiver, FALLING, minmax);
+	    newtransf = calc_transition(trans, receiver, FALLING, minmax);
 	}
 
 	loadnet = (testinst) ? testinst->out_connects->refnet : NULL;
@@ -938,10 +1002,10 @@ find_clock_delay(int dir, double delay, double trans, connptr receiver,
 	    for (i = 0; i < loadnet->fanout; i++) {
 		if (outdir & RISING)
 		    find_clock_delay(RISING, newdelayr, newtransr, loadnet->receivers[i],
-				clocklist, terminal);
+				clocklist, terminal, minmax);
 		if (outdir & FALLING)
 		    find_clock_delay(FALLING, newdelayf, newtransf, loadnet->receivers[i],
-				clocklist, terminal);
+				clocklist, terminal, minmax);
 	    }
 	}
     }
@@ -951,10 +1015,19 @@ find_clock_delay(int dir, double delay, double trans, connptr receiver,
 	for (testbtdata = clocklist; testbtdata; testbtdata = testbtdata->next) {
 	    if (testbtdata->receiver == receiver) {
 		/* Is delay greater than that already recorded?  If so, replace it */
-		if (delay > testbtdata->delay) {
-		    testbtdata->delay = delay;
-		    testbtdata->trans = trans;
-		    testbtdata->dir = dir;
+		if (minmax == MAXIMUM_TIME) {
+		    if (delay > testbtdata->delay) {
+			testbtdata->delay = delay;
+			testbtdata->trans = trans;
+			testbtdata->dir = dir;
+		    }
+		}
+		else {
+		    if (delay < testbtdata->delay) {
+			testbtdata->delay = delay;
+			testbtdata->trans = trans;
+			testbtdata->dir = dir;
+		    }
 		}
 		break;
 	    }
@@ -984,7 +1057,7 @@ find_clock_delay(int dir, double delay, double trans, connptr receiver,
 /*--------------------------------------------------------------*/
 
 int find_path_delay(int dir, double delay, double trans, connptr receiver,
-		btptr backtrace, ddataptr *delaylist) {
+		btptr backtrace, ddataptr *delaylist, char minmax) {
 
     pinptr   testpin;
     netptr   loadnet;
@@ -994,6 +1067,7 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     ddataptr testddata, newddata;
     double   newdelayr, newdelayf, newtransr, newtransf;
     short    outdir;
+    char     replace;
     int	     i, numpaths;
 
     numpaths = 0;
@@ -1010,9 +1084,16 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     // implies that the final result may not be the absolute maximum delay,
     // although it will typically vary by less than an average gate delay.
 
-    if (!exhaustive)
-	if (delay <= receiver->metric)
-	    return numpaths;
+    if (!exhaustive) {
+	if (minmax == MAXIMUM_TIME) {
+	    if (delay <= receiver->metric)
+		return numpaths;
+	}
+	else {
+	    if (delay >= receiver->metric)
+		return numpaths;
+	}
+    }
 
     // Check for a logic loop, and truncate the path to avoid infinite
     // looping in the path search.
@@ -1034,31 +1115,31 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
     // We must allow the routine to pass through the 1st register clock (on the first
     // time through, backtrace is NULL).
 
-    if (testpin && (backtrace == NULL || ((testpin->type & REGISTER_IN) == 0))) {
+    if ((backtrace == NULL) || (testpin && ((testpin->type & REGISTER_IN) == 0))) {
 
 	testinst = receiver->refinst;
-	testcell = testpin->refcell;
+	testcell = (testpin) ? testpin->refcell : NULL;
 
 	// Compute delay from gate input to output
 
 	outdir = calc_dir(testpin, dir);
 	if (outdir & RISING) {
-	    newdelayr = delay + calc_prop_delay(trans, receiver, RISING);
-	    newtransr = calc_transition(trans, receiver, RISING);
+	    newdelayr = delay + calc_prop_delay(trans, receiver, RISING, minmax);
+	    newtransr = calc_transition(trans, receiver, RISING, minmax);
 	}
 	if (outdir & FALLING) {
-	    newdelayf = delay + calc_prop_delay(trans, receiver, FALLING);
-	    newtransf = calc_transition(trans, receiver, FALLING);
+	    newdelayf = delay + calc_prop_delay(trans, receiver, FALLING, minmax);
+	    newtransf = calc_transition(trans, receiver, FALLING, minmax);
 	}
 
-	loadnet = (testinst) ? testinst->out_connects->refnet : NULL;
+	loadnet = (testinst) ? testinst->out_connects->refnet : receiver->refnet;
 	for (i = 0; i < loadnet->fanout; i++) {
 	    if (outdir & RISING)
 		numpaths += find_path_delay(RISING, newdelayr, newtransr,
-			loadnet->receivers[i], newbtdata, delaylist);
+			loadnet->receivers[i], newbtdata, delaylist, minmax);
 	    if (outdir & FALLING)
 		numpaths += find_path_delay(FALLING, newdelayf, newtransf,
-			loadnet->receivers[i], newbtdata, delaylist);
+			loadnet->receivers[i], newbtdata, delaylist, minmax);
 	}
 	receiver->tag = NULL;
     }
@@ -1071,8 +1152,18 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 	    testddata = receiver->tag;
 
 	    if (testddata->backtrace->receiver == receiver) {
-		/* Is delay greater than that already recorded?  If so, replace it */
-		if (delay > testddata->backtrace->delay) {
+		replace = 0;
+		if (minmax == MAXIMUM_TIME) {
+		    /* Is delay greater than that already recorded?  If so, replace it */
+		    if (delay > testddata->backtrace->delay)
+			replace = 1;
+		}
+		else {
+		    /* Is delay less than that already recorded?  If so, replace it */
+		    if (delay < testddata->backtrace->delay)
+			replace = 1;
+		}
+		if (replace) {
 	
 		    /* Remove the existing path record and replace it */
 		    while (testddata->backtrace != NULL) {
@@ -1131,7 +1222,7 @@ int find_path_delay(int dir, double delay, double trans, connptr receiver,
 /* worst-case transition time.					*/
 /*--------------------------------------------------------------*/
 
-btptr find_clock_transition(btptr clocklist, connptr testlink, short dir)
+btptr find_clock_transition(btptr clocklist, connptr testlink, short dir, char minmax)
 {
     btptr testclock, testlinkptr, resetclock;
     connptr testconn;
@@ -1150,7 +1241,8 @@ btptr find_clock_transition(btptr clocklist, connptr testlink, short dir)
     for (testclock = clocklist; testclock; testclock = testclock->next) {
 	testconn = testclock->receiver;
 	tdriver = 0.0;		// to-do:  set to default input transition time
-	find_clock_delay(testlinkptr->dir, 0.0, tdriver, testconn, clocklist, testlink);
+	find_clock_delay(testlinkptr->dir, 0.0, tdriver, testconn, clocklist, testlink,
+			minmax);
     }
 
     // Return the linkptr containing the recorded transition time from
@@ -1214,11 +1306,15 @@ short find_edge_dir(short dir, netptr sourcenet, netptr destnet) {
 /* Return a master list of all backtraces in "masterlist".	*/
 /*								*/
 /* Return value is the number of paths recorded in masterlist.	*/
+/*								*/
+/* If minmax == MAXIMUM_TIME, return the maximum delay.		*/
+/* If minmax == MINIMUM_TIME, return the minimum delay.		*/
 /*--------------------------------------------------------------*/
 
-int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, instptr instlist)
+int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, netptr netlist,
+		char minmax)
 {
-    netptr	commonclock;
+    netptr	commonclock, testnet;
     connptr     testconn, thisconn;
     connlistptr testlink;
     pinptr      testpin;
@@ -1230,9 +1326,9 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
     ddataptr	freeddata;
 
     short	srcdir, destdir;		// Signal direction in/out
-    double	tdriver, setupdelay;
+    double	tdriver, setupdelay, holddelay;
     char	clk_sense_inv, clk_invert;
-    int		numpaths, n;
+    int		numpaths, n, i;
 
     delaylist = NULL;
     clocklist = NULL;
@@ -1240,23 +1336,45 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 
     numpaths = 0;
     for (testlink = clockedlist; testlink; testlink = testlink->next) {
+
+	// Remove all tags and reset delay metrics before each run
+
+	for (testnet = netlist; testnet; testnet = testnet->next) {
+	    for (i = 0; i < testnet->fanout; i++) {
+		testconn = testnet->receivers[i];
+		testconn->tag = NULL;
+		if (minmax == MAXIMUM_TIME)
+		    testconn->metric = -1.0;
+		else
+		    testconn->metric = 1E50;
+	    }
+	}
+
 	thisconn = testlink->connection;
 	testpin = thisconn->refpin;
-	testcell = testpin->refcell;
+	if (testpin) {
+	    testcell = testpin->refcell;
 
-	// Sense is positive for rising edge-triggered flops, negative for
-	// falling edge-triggered flops
-	srcdir = (testcell->type & CLK_SENSE_MASK) ? FALLING : RISING;
+	    // Sense is positive for rising edge-triggered flops, negative for
+	    // falling edge-triggered flops
+	    srcdir = (testcell->type & CLK_SENSE_MASK) ? FALLING : RISING;
 
-	// Find the sources of the clock at the path start
-	find_clock_source(thisconn, &clocklist, srcdir);
+	    // Find the sources of the clock at the path start
+	    find_clock_source(thisconn, &clocklist, srcdir);
 
-	// Find the clock source with the worst-case transition time at testlink
-	selectedsource = find_clock_transition(clocklist, thisconn, srcdir);
-	if (selectedsource == NULL)
-	    tdriver = 0.0;
-	else
-	    tdriver = selectedsource->trans;
+	    // Find the clock source with the worst-case transition time at testlink
+	    // (Note:  For maximum path delay, find minimum clock transistion, and vice versa)
+	    selectedsource = find_clock_transition(clocklist, thisconn, srcdir, ~minmax);
+	    if (selectedsource == NULL)
+		tdriver = 0.0;
+	    else
+		tdriver = selectedsource->trans;
+	}
+	else {
+	    // Connection is an input pin;  must calculate both rising and falling edges.
+	    srcdir = EITHER;
+	    tdriver = 0.0;	// To-do: use designated input transition time
+	}
 
 	// Report on paths and their maximum delays
 	if (verbose > 0) {
@@ -1266,7 +1384,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 	}
 
 	// Find all paths from "thisconn" to output or a flop input, and compute delay
-	n = find_path_delay(srcdir, 0.0, tdriver, thisconn, NULL, &delaylist);
+	n = find_path_delay(srcdir, 0.0, tdriver, thisconn, NULL, &delaylist, minmax);
 	numpaths += n;
 
 	if (verbose > 0) fprintf(stdout, "%d paths traced (%d total).\n\n", n, numpaths);
@@ -1282,7 +1400,7 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 		destdir = (testinst->refcell->type & CLK_SENSE_MASK) ? FALLING : RISING;
 		testconn = find_register_clock(testinst);
 		find_clock_source(testconn, &clock2list, destdir);
-		selecteddest = find_clock_transition(clock2list, testconn, destdir);
+		selecteddest = find_clock_transition(clock2list, testconn, destdir, ~minmax);
 
 		// Find the connection that is common to both clocks
 		commonclock = find_common_clock(clocklist, clock2list);
@@ -1313,12 +1431,22 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 						selecteddest->receiver->refnet)) ? 0 : 1;
 		    }
 
-		    // Add setup time for destination clocks
-		    setupdelay = calc_setup_time(testddata->trans,
+		    if (minmax == MAXIMUM_TIME) {
+			// Add setup time for destination clocks
+			setupdelay = calc_setup_time(testddata->trans,
 					testddata->backtrace->receiver->refpin,
 					selecteddest->trans,
-					testddata->backtrace->dir);
-		    testddata->delay += setupdelay;
+					testddata->backtrace->dir, minmax);
+			testddata->delay += setupdelay;
+		    }
+		    else {
+			// Subtract hold time for destination clocks
+			holddelay = calc_hold_time(testddata->trans,
+					testddata->backtrace->receiver->refpin,
+					selecteddest->trans,
+					testddata->backtrace->dir, minmax);
+			testddata->delay -= holddelay;
+		    }
 
 		    if (verbose > 0)
 			fprintf(stdout, "Path terminated on flop \"%s\" input with max delay %g ps\n",
@@ -1373,7 +1501,10 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 		    }
 		    if (selecteddest != NULL && selectedsource != NULL) {
 			if (verbose > 0) {
-			    fprintf(stdout, "   %g setup time at destination\n", setupdelay);
+			    if (minmax == MAXIMUM_TIME)
+				fprintf(stdout, "   %g setup time at destination\n", setupdelay);
+			    else
+				fprintf(stdout, "   %g hold time at destination\n", holddelay);
 			}
 		    }
 
@@ -1413,15 +1544,6 @@ int find_clock_to_term_paths(connlistptr clockedlist, ddataptr *masterlist, inst
 		freebt = clock2list;
 		clock2list = clock2list->next;
 		free(freebt);
-	    }
-	}
-
-	// Remove all tags and reset delay metrics
-
-	for (testinst = instlist; testinst; testinst = testinst->next) {
-	    for (testconn = testinst->in_connects; testconn; testconn = testconn->next) {
-		testconn->tag = NULL;
-		testconn->metric = -1.0;
 	    }
 	}
 
@@ -2635,7 +2757,8 @@ computeLoads(netptr netlist, instptr instlist, double out_load)
 /* clock inputs, which are latch enable inputs, and which are	*/
 /* asynchronous set/reset inputs,.				*/
 /*								*/
-/* Whenever a clock net is found, add the pins to clockedlist	*/
+/* Whenever a clock input to a flop is found, add the		*/
+/* connection record to clockedlist				*/
 /*								*/
 /* For diagnostics, return the number of entries in clockedlist	*/
 /*--------------------------------------------------------------*/
@@ -2802,7 +2925,8 @@ main(int objc, char *argv[])
     instptr     instlist = NULL;
     netptr      netlist = NULL;
     connlistptr clockconnlist = NULL;
-    connptr     inputlist = NULL;
+    connlistptr newinputconn, inputconnlist = NULL;
+    connptr     testconn, inputlist = NULL;
     connptr     outputlist = NULL;
 
     // Timing path database
@@ -2865,6 +2989,7 @@ main(int objc, char *argv[])
     }
     else {
 	fflush(stdout);
+	fprintf(stdout, "-----------------------------------------\n");
 	fprintf(stdout, "Vesta static timing analysis tool\n");
 	fprintf(stdout, "(c) 2013 Tim Edwards, Open Circuit Design\n");
 	fprintf(stdout, "-----------------------------------------\n\n");
@@ -2960,6 +3085,15 @@ main(int objc, char *argv[])
 
     createLinks(netlist, instlist, inputlist, outputlist);
 
+    /* Generate a connection list from inputlist */
+
+    for (testconn = inputlist; testconn; testconn = testconn->next) {
+	newinputconn = (connlistptr)malloc(sizeof(connlist));
+	newinputconn->connection = testconn;
+	newinputconn->next = inputconnlist;
+	inputconnlist = newinputconn;
+    }
+
     /*--------------------------------------------------*/
     /* Calculate total load on each net			*/
     /* To do:  Add wire models or computed wire delays	*/
@@ -2981,7 +3115,7 @@ main(int objc, char *argv[])
     /* Identify all clock-to-terminal paths		*/
     /*--------------------------------------------------*/
 
-    numpaths = find_clock_to_term_paths(clockconnlist, &pathlist, instlist);
+    numpaths = find_clock_to_term_paths(clockconnlist, &pathlist, netlist, MAXIMUM_TIME);
     fprintf(stdout, "Number of paths analyzed:  %d\n", numpaths);
 
     /*--------------------------------------------------*/
@@ -3000,21 +3134,30 @@ main(int objc, char *argv[])
     qsort(orderedpaths, numpaths, sizeof(ddataptr), (__compar_fn_t)compdelay);
 
     /*--------------------------------------------------*/
-    /* Report on top 20 delay paths			*/
+    /* Report on top 20 maximum delay paths		*/
     /*--------------------------------------------------*/
 
-    fprintf(stdout, "Top 20 delay paths:\n");
+    fprintf(stdout, "\nTop %d maximum delay paths:\n", (numpaths >= 20) ? 20 : numpaths);
     badtiming = 0;
-    for (i = 0; i < 20; i++) {
+    for (i = 0; ((i < 20) && (i < numpaths)); i++) {
 	testddata = orderedpaths[i];
 	for (testbt = testddata->backtrace; testbt->next; testbt = testbt->next);
 		
-	fprintf(stdout, "Path %s/%s to %s/%s delay %g ps",
-		testbt->receiver->refinst->name,
-		testbt->receiver->refpin->name,
-		testddata->backtrace->receiver->refinst->name,
-		testddata->backtrace->receiver->refpin->name,
-		testddata->delay);
+	if (testddata->backtrace->receiver->refinst != NULL) {
+	    fprintf(stdout, "Path %s/%s to %s/%s delay %g ps",
+			testbt->receiver->refinst->name,
+			testbt->receiver->refpin->name,
+			testddata->backtrace->receiver->refinst->name,
+			testddata->backtrace->receiver->refpin->name,
+			testddata->delay);
+	}
+	else {
+	    fprintf(stdout, "Path %s/%s to output pin %s delay %g ps",
+			testbt->receiver->refinst->name,
+			testbt->receiver->refpin->name,
+			testddata->backtrace->receiver->refnet->name,
+			testddata->delay);
+	}
 
 	if (period > 0.0) {
 	    slack = period - testddata->delay;
@@ -3036,6 +3179,228 @@ main(int objc, char *argv[])
 	fprintf(stdout, "Computed maximum clock frequency (zero slack) = %g MHz\n",
 		(1.0E6 / orderedpaths[0]->delay));
     }
+    fprintf(stdout, "-----------------------------------------\n\n");
+    fflush(stdout);
+
+    /*--------------------------------------------------*/
+    /* Clean up the path list				*/
+    /*--------------------------------------------------*/
+
+    while (pathlist != NULL) {
+	freeddata = pathlist;
+	pathlist = pathlist->next;
+	while (freeddata->backtrace != NULL) {
+	    freebt = freeddata->backtrace;
+	    freeddata->backtrace = freeddata->backtrace->next;
+	    freebt->refcnt--;
+	    if (freebt->refcnt == 0) free(freebt);
+	}
+	free(freeddata);
+    }
+
+    free(orderedpaths);
+
+    /*--------------------------------------------------*/
+    /* Now calculate minimum delay paths		*/
+    /*--------------------------------------------------*/
+
+    numpaths = find_clock_to_term_paths(clockconnlist, &pathlist, netlist, MINIMUM_TIME);
+    fprintf(stdout, "Number of paths analyzed:  %d\n", numpaths);
+
+    /*--------------------------------------------------*/
+    /* Collect paths into a non-linked array so that	*/
+    /* they can be sorted by delay time			*/
+    /*--------------------------------------------------*/
+
+    orderedpaths = (ddataptr *)malloc(numpaths * sizeof(ddataptr));
+
+    i = 0;
+    for (testddata = pathlist; testddata; testddata = testddata->next) {
+       orderedpaths[i] = testddata;
+       i++;
+    }
+
+    qsort(orderedpaths, numpaths, sizeof(ddataptr), (__compar_fn_t)compdelay);
+
+    /*--------------------------------------------------*/
+    /* Report on top 20 minimum delay paths		*/
+    /*--------------------------------------------------*/
+
+    fprintf(stdout, "\nTop %d minimum delay paths:\n", (numpaths >= 20) ? 20 : numpaths);
+    badtiming = 0;
+    for (i = numpaths; (i > (numpaths - 20)) && (i > 0); i--) {
+	testddata = orderedpaths[i - 1];
+	for (testbt = testddata->backtrace; testbt->next; testbt = testbt->next);
+		
+	if (testddata->backtrace->receiver->refinst != NULL) {
+	    fprintf(stdout, "Path %s/%s to %s/%s delay %g ps\n",
+			testbt->receiver->refinst->name,
+			testbt->receiver->refpin->name,
+			testddata->backtrace->receiver->refinst->name,
+			testddata->backtrace->receiver->refpin->name,
+			testddata->delay);
+	}
+	else {
+	    fprintf(stdout, "Path %s/%s to output pin %s delay %g ps\n",
+			testbt->receiver->refinst->name,
+			testbt->receiver->refpin->name,
+			testddata->backtrace->receiver->refnet->name,
+			testddata->delay);
+	}
+
+	if (testddata->delay < 0.0) badtiming = 1;
+    }
+    if (badtiming)
+	fprintf(stdout, "ERROR:  Design fails minimum hold timing.\n");
+    else
+	fprintf(stdout, "Design meets minimum hold timing.\n");
+
+    fprintf(stdout, "-----------------------------------------\n\n");
+    fflush(stdout);
+
+    /*--------------------------------------------------*/
+    /* Clean up the path list				*/
+    /*--------------------------------------------------*/
+
+    while (pathlist != NULL) {
+	freeddata = pathlist;
+	pathlist = pathlist->next;
+	while (freeddata->backtrace != NULL) {
+	    freebt = freeddata->backtrace;
+	    freeddata->backtrace = freeddata->backtrace->next;
+	    freebt->refcnt--;
+	    if (freebt->refcnt == 0) free(freebt);
+	}
+	free(freeddata);
+    }
+
+    free(orderedpaths);
+
+    for (testconn = inputlist; testconn; testconn = testconn->next) {
+	testconn->tag = NULL;
+	testconn->metric = -1;
+    }
+
+    /*--------------------------------------------------*/
+    /* Identify all input-to-terminal paths		*/
+    /*--------------------------------------------------*/
+
+    numpaths = find_clock_to_term_paths(inputconnlist, &pathlist, netlist, MAXIMUM_TIME);
+    fprintf(stdout, "Number of paths analyzed:  %d\n", numpaths);
+
+    /*--------------------------------------------------*/
+    /* Collect paths into a non-linked array so that	*/
+    /* they can be sorted by delay time			*/
+    /*--------------------------------------------------*/
+
+    orderedpaths = (ddataptr *)malloc(numpaths * sizeof(ddataptr));
+
+    i = 0;
+    for (testddata = pathlist; testddata; testddata = testddata->next) {
+       orderedpaths[i] = testddata;
+       i++;
+    }
+
+    qsort(orderedpaths, numpaths, sizeof(ddataptr), (__compar_fn_t)compdelay);
+
+    /*--------------------------------------------------*/
+    /* Report on top 20 maximum delay paths		*/
+    /*--------------------------------------------------*/
+
+    fprintf(stdout, "\nTop %d maximum delay paths:\n", (numpaths >= 20) ? 20 : numpaths);
+    for (i = 0; ((i < 20) && (i < numpaths)); i++) {
+	testddata = orderedpaths[i];
+	for (testbt = testddata->backtrace; testbt->next; testbt = testbt->next);
+		
+	if (testddata->backtrace->receiver->refinst != NULL) {
+	    fprintf(stdout, "Path input pin %s to %s/%s delay %g ps\n",
+			testbt->receiver->refnet->name,
+			testddata->backtrace->receiver->refinst->name,
+			testddata->backtrace->receiver->refpin->name,
+			testddata->delay);
+	}
+	else {
+	    fprintf(stdout, "Path input pin %s to output pin %s delay %g ps\n",
+			testbt->receiver->refnet->name,
+			testddata->backtrace->receiver->refnet->name,
+			testddata->delay);
+	}
+    }
+
+    fprintf(stdout, "-----------------------------------------\n\n");
+    fflush(stdout);
+
+    /*--------------------------------------------------*/
+    /* Clean up the path list				*/
+    /*--------------------------------------------------*/
+
+    while (pathlist != NULL) {
+	freeddata = pathlist;
+	pathlist = pathlist->next;
+	while (freeddata->backtrace != NULL) {
+	    freebt = freeddata->backtrace;
+	    freeddata->backtrace = freeddata->backtrace->next;
+	    freebt->refcnt--;
+	    if (freebt->refcnt == 0) free(freebt);
+	}
+	free(freeddata);
+    }
+
+    free(orderedpaths);
+
+    for (testconn = inputlist; testconn; testconn = testconn->next) {
+	testconn->tag = NULL;
+	testconn->metric = 1E50;
+    }
+
+    /*--------------------------------------------------*/
+    /* Now calculate minimum delay paths from inputs	*/
+    /*--------------------------------------------------*/
+
+    numpaths = find_clock_to_term_paths(inputconnlist, &pathlist, netlist, MINIMUM_TIME);
+    fprintf(stdout, "Number of paths analyzed:  %d\n", numpaths);
+
+    /*--------------------------------------------------*/
+    /* Collect paths into a non-linked array so that	*/
+    /* they can be sorted by delay time			*/
+    /*--------------------------------------------------*/
+
+    orderedpaths = (ddataptr *)malloc(numpaths * sizeof(ddataptr));
+
+    i = 0;
+    for (testddata = pathlist; testddata; testddata = testddata->next) {
+       orderedpaths[i] = testddata;
+       i++;
+    }
+
+    qsort(orderedpaths, numpaths, sizeof(ddataptr), (__compar_fn_t)compdelay);
+
+    /*--------------------------------------------------*/
+    /* Report on top 20 minimum delay paths		*/
+    /*--------------------------------------------------*/
+
+    fprintf(stdout, "\nTop %d minimum delay paths:\n", (numpaths >= 20) ? 20 : numpaths);
+    for (i = numpaths; (i > (numpaths - 20)) && (i > 0); i--) {
+	testddata = orderedpaths[i - 1];
+	for (testbt = testddata->backtrace; testbt->next; testbt = testbt->next);
+		
+	if (testddata->backtrace->receiver->refinst != NULL) {
+	    fprintf(stdout, "Path input pin %s to %s/%s delay %g ps\n",
+			testbt->receiver->refnet->name,
+			testddata->backtrace->receiver->refinst->name,
+			testddata->backtrace->receiver->refpin->name,
+			testddata->delay);
+	}
+	else {
+	    fprintf(stdout, "Path input pin %s to output pin %s delay %g ps\n",
+			testbt->receiver->refnet->name,
+			testddata->backtrace->receiver->refnet->name,
+			testddata->delay);
+	}
+    }
+
+    fprintf(stdout, "-----------------------------------------\n\n");
+    fflush(stdout);
 
     /*--------------------------------------------------*/
     /* Clean up the path list				*/
