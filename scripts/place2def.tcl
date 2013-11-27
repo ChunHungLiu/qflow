@@ -10,6 +10,12 @@
 # fill cells instead of removing them.  It should be used when the
 # standard cell set defines a filler cell.  "twfeed" connections in
 # the .pin file are still ignored, as before.
+#
+# Modified 11/23/2013 to include support for the "decongest.tcl" script.
+# That routine modifies instance names and widths to create a fake cell
+# incorporating extra fill space that TimberWolf cannot optimize out.
+# It is then the responsibility of place2def.tcl to split the cell back
+# into the original cell plus the filler cell in front.
 #---------------------------------------------------------------------------
 
 if {$argc < 3} {
@@ -109,19 +115,62 @@ puts $fdef ""
 # Part 1:  Area and routing tracks
 #-----------------------------------------------------------------
 
+# Defaults for older versions of qrouter that did not output the version
+# number to the info file
+set major 1
+set minor 1
+set subv  0
+set scripting 0
+
+catch {exec $qrouter_path -i $infoname}
+
+set finf [open $infoname r]
+if {$finf != {}} {
+   while {[gets $finf line] >= 0} {
+
+      # Versions of qrouter since 1.2.3 provide version information, including
+      # whether or not qrouter was compiled with Tcl/Tk and supports scripting
+
+      if {[regexp {qrouter ([1-9]+)\.([1-9]+)\.([1-9]+)(.*)} $line lmatch \
+		major minor subv rest]} {
+	 if {[regexp {[ \t]*\.T} $rest lmatch]} {set scripting 1}
+      }
+   }
+}
+close $finf
+
 #-----------------------------------------------------------------
-# Generate route configuration file
+# Start route configuration file
+# The nature of this file depends on the version of qrouter used
+# Only the LEF file information needs to be in the file at this
+# time, but it is critical to have it present so that qrouter
+# will be able to parse the LEF files and generate the route
+# layer information.
 #-----------------------------------------------------------------
 
-puts $fcfg "# route configuration file"
-puts $fcfg "# for project ${topname}"
-puts $fcfg ""
-puts $fcfg "Num_layers  $numlayers"
-puts $fcfg ""
-foreach leffile $leffiles {puts $fcfg "lef ${leffile}"}
+if {$scripting == 0} {
+   puts $fcfg "# route configuration file"
+   puts $fcfg "# for project ${topname}"
+   puts $fcfg ""
+   puts $fcfg "Num_layers  $numlayers"
+   puts $fcfg ""
+   foreach leffile $leffiles {puts $fcfg "lef ${leffile}"}
+} else {
+   puts $fcfg "# qrouter runtime script"
+   puts $fcfg "# for project ${topname}"
+   puts $fcfg ""
+   puts $fcfg "verbose 1"	;# limit the amount of output
+
+   # In the script, we need to read the LEF files first, then
+   # define how many layers will actually be used for routing
+
+   foreach leffile $leffiles {puts $fcfg "read_lef ${leffile}"}
+   puts $fcfg "layers  $numlayers"
+   puts $fcfg ""
+}
+
 puts $fcfg ""
 flush $fcfg
-
 
 #-----------------------------------------------------------------
 # Read the .pl2 file and get the full die area (components only)
@@ -138,24 +187,32 @@ if {$finf != {}} {
    set i 0
    while {[gets $finf line] >= 0} {
 
-      # Older versions of qrouter assumed a track offset of 1/2 track pitch.
-      # Newer versions correctly take the offset from the LEF file and dump the
-      # value to the info file.  Also the newer version records the track width,
-      # although this is not used.
+      # Versions of qrouter since 1.2.3 provide version information, including
+      # whether or not qrouter was compiled with Tcl/Tk and supports scripting
 
-      if {[regexp {^[ \t]*([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)} \
-		$line lmatch layer pitch offset width orient] <= 0} {
-         regexp {^[ \t]*([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)} $line lmatch \
-		layer pitch orient 
-	 set offset [expr 0.5 * $pitch]
-	 set width $pitch
+      if {![regexp {qrouter ([1-9]+)\.([1-9]+)\.([1-9]+)(.*)} $line lmatch \
+		major minor subv rest]} {
+
+         # Older versions of qrouter assumed a track offset of 1/2 track pitch.
+         # Newer versions correctly take the offset from the LEF file and dump the
+         # value to the info file.  Also the newer version records the track width,
+         # although this is not used.
+
+ 	 if {[regexp {^[ \t]*([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)} \
+			$line lmatch layer pitch offset width orient] <= 0} {
+            regexp {^[ \t]*([^ ]+)[ \t]+([^ ]+)[ \t]+([^ ]+)} $line lmatch \
+			layer pitch orient 
+	    set offset [expr 0.5 * $pitch]
+	    set width $pitch
+         }
+
+         incr i
+         set metal${i}(name) $layer
+         set metal${i}(pitch) $pitch
+         set metal${i}(orient) $orient
+         set metal${i}(offset) $offset
+         set metal${i}(width) $width
       }
-      incr i
-      set metal${i}(name) $layer
-      set metal${i}(pitch) $pitch
-      set metal${i}(orient) $orient
-      set metal${i}(offset) $offset
-      set metal${i}(width) $width
    }
    close $finf
 
@@ -332,7 +389,13 @@ set corextop_um [expr ($corextop + $pitchx) / 100.0]
 set coreybot_um [expr $coreybot / 100.0]
 set coreytop_um [expr ($coreytop + $pitchy) / 100.0]
 
-#  Obstruct all positions in metal1, unless there are only 2 routing layers defined.
+#-----------------------------------------------------------------
+# Finish route configuration file
+#-----------------------------------------------------------------
+
+# Obstruct all positions in metal1, unless there are only 2 routing layers defined.
+# (This syntax is common to the Tcl and non-Tcl versions of qrouter)
+
 if {$numlayers > 2} {
    set mname $metal1(name)
    # 1. Top
@@ -420,6 +483,23 @@ while {![catch {set yvals($i)}]} {
    incr i
 }
 
+# In the scripted version of qrouter, the runtime script continues
+# with the command to read the DEF file, route, and write the
+# results.
+
+# This script performs a fairly standard routing run, using
+# mostly defaults.  The main thing that differs from qrouter's
+# internal default script is that a route failure causes it to
+# dump a file containing congestion information, so that this
+# information can be fed back to to placement tool to improve
+# the placement and increase the probability of routing on the
+# next iteration.
+
+if {$scripting != 0} {
+   puts $fcfg "read_def ${topname}.def"
+   puts $fcfg "qrouter::congestion_route ${topname}.cinfo"
+}
+
 close $fcfg
 
 #-----------------------------------------------------------------
@@ -439,6 +519,13 @@ while {[gets $fpl1 line] >= 0} {
       incr numpins
    } else {
       incr numcomps
+      if [regexp {^[ \t]*[^ \t.]+\.([^ \t.]+)\.[^ \t.]+[ \t]+} $line lmatch fsize] {
+	 if [regexp {[0-9]+X([0-9]+)} $fsize lmatch fmult] {
+	    incr numcomps $fmult
+	 } else {
+	    incr numcomps
+	 }
+      }
    }
 }
 close $fpl1
@@ -542,6 +629,30 @@ while {[gets $fpl1 line] >= 0} {
          # Replace twfeed with name of filler cell
 	 set cellname ${fill_cell}
       } else {
+
+	 # Pull out the fill cell if one was spliced into
+	 # the component name
+	 if [regexp {([^ \t.]+)\.([^ \t.]+)\.([^ \t.]+)} $instance \
+			lmatch fillcell fillwidth baseinst] {
+	    if {![regexp {([0-9]+)X([0-9]+)} $fillwidth lmatch fillnom fmult]} {
+	       set fillnom $fillwidth
+	       set fmult 1
+	    }
+	    set cellname $fillcell
+	    set instance $baseinst
+	    set fillname $cellname
+	    set llyoff [expr $lly - $cellybot]
+
+	    for {set i 0} {$i < $fmult} {incr i} {
+
+	       set llxoff [expr $llx - $cellxbot]
+	       puts $fdef "- ${fillname}_$baseinst $cellname + PLACED ( $llxoff $llyoff ) $ostr ;"
+	       incr numcomps -1
+	       set llx [expr $llx + $fillnom]
+	       set fillname "${cellname}$i"
+	    }
+	 }
+
          # Get cellname from instance name.
          regsub {([^_]+)_[\d]+} $instance {\1} cellname
       }
@@ -619,6 +730,14 @@ while {[gets $fpin line] >= 0} {
       set curnet $netname
       puts $fdef ";"
       puts $fdef "- $netname"
+   }
+
+   # Rip the filler cell name off the beginning of instances where
+   # they were spliced in
+
+   if [regexp {([^ \t.]+)\.([^ \t.]+)\.([^ \t.]+)} $instance \
+			lmatch fillcell fillwidth baseinst] {
+      set instance $baseinst
    }
 
    if {([string first twfeed ${instance}] == -1) &&

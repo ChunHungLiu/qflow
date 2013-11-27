@@ -16,7 +16,7 @@ DEFAULTPARSER = @QFLOW_DEFAULT_PARSER@
 
 TCL_SCRIPTS = blif2cel.tcl clocktree.tcl place2def.tcl place2lef2.tcl
 TCL_SCRIPTS += place2net2.tcl postproc.tcl ypostproc.tcl ybuffer.tcl
-TCL_SCRIPTS += setreset.tcl vmunge.tcl
+TCL_SCRIPTS += setreset.tcl vmunge.tcl decongest.tcl
 TCL_SCRIPTS += addspacers.tcl vispreproc.tcl outputprep.tcl
 SHELL_SCRIPTS = placement.sh router.sh vesta.sh
 SHELL_SCRIPTS += synthesize_odin.sh synthesize_yosys.sh

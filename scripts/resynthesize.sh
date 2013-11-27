@@ -62,15 +62,15 @@ cd ${projectpath}
 
 touch ${synthlog}
 
+if (! ${?clocktree_options}) then
+   set clocktree_options = ""
+endif
+
 #---------------------------------------------------------------------
 # Ensure that there is a .pin file in the layout directory.  Run the
 # "clock tree insertion tool" (which actually buffers all high-fanout
 # nets, not just the clock).
 #---------------------------------------------------------------------
-
-if (! ${?clocktree_options}) then
-   set clocktree_options = ""
-endif
 
 if (-f ${layoutdir}/${rootname}.pin ) then
    echo "Running clocktree"
@@ -85,7 +85,7 @@ else
 endif
 
 #---------------------------------------------------------------------
-# Spot check:  Did clocktree produce file ${rootname}.cel?
+# Spot check:  Did clocktree produce file ${rootname}_tmp.blif?
 #---------------------------------------------------------------------
 
 if ( !( -f ${synthdir}/${rootname}_tmp.blif || \

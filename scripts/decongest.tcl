@@ -1,0 +1,260 @@
+#!/usr/bin/tclsh
+#
+# Usage:
+#	decongest.tcl <rootname> <leffile> <fillcell> [<scale>]
+#
+# Take information produced by qrouter's "congested" command,
+# and use it to add fill-cell padding to the most congested
+# instances in the .cel file. 
+#
+# This procedure is necessary because TimberWolf does not
+# have a way (apparently) to reduce internal density by
+# adding spacers.  So we use feedback from the router to
+# find targeted areas to add extra fill.  Since TimberWolf
+# only looks at the contents of the .cel file, padding can
+# be added by rewriting the cell width for specific cells
+# to include the width of one or more filler cells.  By
+# annotating the cell instance name, it becomes easy to
+# add the fill cells into the DEF file after placement.
+#
+# "scale" gives a scalefactor which is more or less how many
+# filler cells it takes to match the area of an average
+# standard cell.
+#------------------------------------------------------------
+# Written by Tim Edwards, November 23, 2013
+#------------------------------------------------------------
+# LEF dimensions are microns unless otherwise stated.
+
+if {$argc != 3 && $argc != 4} {
+   puts stderr "Bad argument list"
+   puts stderr "Usage: decongest.tcl <rootname> <leffile> <fillcell> [<scale>]"
+   exit 1
+}
+
+set units 100
+
+set cellname [file rootname [lindex $argv 0]]
+
+set celfile ${cellname}.cel
+set annofile ${cellname}.acel
+set cinfofile ${cellname}.cinfo
+set lefname [lindex $argv 1]
+set fillcell [lindex $argv 2]
+
+if {$argc == 4} {
+   set scale [lindex $argv 3]
+} else {
+   set scale 1
+}
+
+if [catch {open $lefname r} flef] {
+   puts stderr "Error: can't open file $lefname for input"
+   return
+}
+
+if [catch {open $celfile r} fcel] {
+   puts stderr "Error: can't open file $celfile for input"
+   return
+}
+
+if [catch {open $cinfofile r} finf] {
+   puts stderr "Error: can't open file $cinfofile for input"
+   return
+}
+
+if [catch {open $annofile w} fanno] {
+   puts stderr "Error: can't open file $annofile for output"
+   return
+}
+
+#----------------------------------------------------------------
+# Read through a LEF file section that we don't care about.
+#----------------------------------------------------------------
+
+proc skip_section {leffile sectionname} {
+   while {[gets $leffile line] >= 0} {
+      if [regexp {[ \t]*END[ \t]+(.+)[ \t]*$} $line lmatch sectiontest] {
+         if {"$sectiontest" != "$sectionname"} {
+            puts -nonewline stderr "Unexpected END statement $line "
+            puts stderr "while reading section $sectionname"
+         }
+         break
+      }
+   }
+}
+
+#----------------------------------------------------------------
+# Parse the macro contents of the LEF file and retain the information
+# about cell size and pin positions.
+#----------------------------------------------------------------
+
+proc parse_macro {leffile macroname} {
+   global $macroname units
+
+   while {[gets $leffile line] >= 0} {
+      if [regexp {[ \t]*SYMMETRY[ \t]+(.+)[ \t]*;} $line lmatch symmetry] {
+         set ${macroname}(symmetry) $symmetry
+      } elseif [regexp {[ \t]*ORIGIN[ \t]+(.+)[ \t]+(.+)[ \t]*;} $line lmatch x y] {
+         set x [expr {int($x * $units)}]
+         set y [expr {int($y * $units)}]
+         set ${macroname}(x) $x
+         set ${macroname}(y) $y
+      } elseif [regexp {[ \t]*SIZE[ \t]+(.+)[ \t]+BY[ \t]+(.+)[ \t]*;} \
+                        $line lmatch w h] {
+         set w [expr {int($w * $units)}]
+         set h [expr {int($h * $units)}]
+         set ${macroname}(w) $w
+         set ${macroname}(h) $h
+
+      } elseif [regexp {[ \t]*PIN[ \t]+(.+)[ \t]*$} $line lmatch pinname] {
+	 # The fill cell is not expected to have any usable pins
+	 skip_section $leffile $pinname
+      } elseif [regexp {[ \t]*END[ \t]+(.+)[ \t]*$} $line lmatch macrotest] {
+         if {"$macrotest" == "$macroname"} {
+            break
+         } else {
+            puts stderr "Unexpected END statement $line while reading macro $macroname"
+         }
+      }
+   }
+}
+
+#-----------------------------------------------------------------
+# Read the lef macro file and get the fill cells and their widths
+#-----------------------------------------------------------------
+
+puts stdout "Reading ${fillcell} macros from LEF file."
+flush stdout
+
+set fillcells {}
+
+while {[gets $flef line] >= 0} {
+   if [regexp {[ \t]*MACRO[ \t]+(.+)[ \t]*$} $line lmatch macroname] {
+      # Parse the "macro" statement
+      parse_macro $flef $macroname
+      if {[string first $fillcell $macroname] == 0} {
+	 # Remember this for later if it's a fill cell
+	 lappend fillcells $macroname
+      }
+   } elseif [regexp {[ \t]*LAYER[ \t]+([^ \t]+)} $line lmatch layername] {
+      skip_section $flef $layername
+   } elseif [regexp {[ \t]*VIA[ \t]+([^ \t]+)} $line lmatch vianame] {
+      skip_section $flef $vianame
+   } elseif [regexp {[ \t]*VIARULE[ \t]+([^ \t]+)} $line lmatch viarulename] {
+      skip_section $flef $viarulename
+   } elseif [regexp {[ \t]*SITE[ \t]+(.+)[ \t]*$} $line lmatch sitename] {
+      skip_section $flef $sitename
+   } elseif [regexp {[ \t]*UNITS[ \t]*$} $line lmatch] {
+      skip_section $flef UNITS
+   } elseif [regexp {[ \t]*END[ \t]+LIBRARY[ \t]*$} $line lmatch] {
+      break
+   } elseif [regexp {^[ \t]*#} $line lmatch] {
+      # Comment line, ignore.
+   } elseif ![regexp {^[ \t]*$} $line lmatch] {
+      # Other things we don't care about
+      set matches 0
+      if [regexp {[ \t]*NAMESCASESENSITIVE} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*VERSION} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*BUSBITCHARS} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*DIVIDERCHAR} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*USEMINSPACING} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*CLEARANCEMEASURE} $line lmatch] {
+         incr matches
+      } elseif [regexp {[ \t]*MANUFACTURINGGRID} $line lmatch] {
+         incr matches
+      } else {
+         puts stderr "Unexpected input in LEF file:  Only macro defs were expected!"
+         puts -nonewline stdout "Line is: $line"
+	 flush stdout
+      }
+   }
+}
+
+# If the macro file doesn't define any fill cells, there's not a
+# whole lot we can do. . .
+
+if {[llength $fillcells] == 0} {
+   puts stdout "No fill cells (${fillname}) found in macro file ${lefname}!"
+   exit 1
+}
+
+close $flef
+
+# Sort array of fill cells by width
+
+set fillwidths {}
+foreach macro $fillcells {
+   lappend fillwidths [list $macro [subst \$${macro}(w)]]
+}
+set fillwidths [lsort -decreasing -index 1 $fillwidths]
+
+#------------------------------------------------------------------------
+# Now read the contents of the cinfo file so that we have a list of the
+# cells to add padding to
+#------------------------------------------------------------------------
+
+gets $finf line		;# Throw-away line
+gets $finf line		;# Throw-away line
+gets $finf line		;# Failures: X Y
+
+if {![regexp {[ \t]*Failures:[ \t]+([0-9]+)[ \t]+([0-9]+)} $line lmatch failures numnets]} {
+   puts stdout "Cannot parse number of route failures from .cinfo file!"
+   exit 1
+}
+
+gets $finf line		;# Throw-away line
+
+set instlist {}
+while {[gets $finf line] >= 0} {
+   if [regexp {[ \t]*([^ \t]+)[ \t]+([^ \t]+)} $line lmatch instname congest] {
+      lappend instlist $instname
+      if {$congest < 2.0} break		;# initial attempt, fixed congestion breakpoint
+   }   
+}
+
+close $finf
+
+#------------------------------------------------------------------------
+# Now read the contents of the cel file.  When a cell is found that is
+# in the "instlist" list of cells, annotate the next line to increase
+# the width by an amount equal to the width of a fill cell.
+#
+# To do:  Use different fill cell widths according to congestion amount;
+# or use multiple fill cells (if different widths are not available).
+#------------------------------------------------------------------------
+
+set fillinfo [lindex $fillwidths 0]
+set fillmacro [lindex $fillinfo 0]
+set fillvalue [lindex $fillinfo 1]
+set halfvalue [expr {$scale * $fillvalue / 2}]
+if {$scale > 1} {
+   set fillvalue "${fillvalue}X${scale}"
+}
+
+while {[gets $fcel line] >= 0} {
+   if [regexp {[ \t]*cell[ \t]*([0-9]+)[ \t]+([^ \t]+)} $line lmatch instnum instname] {
+      if {[lsearch $instlist $instname] >= 0} {
+         puts $fanno "cell $instnum ${fillmacro}.${fillvalue}.${instname}"
+         gets $fcel line
+         if [regexp {[ \t]*left[ \t]+([^ \t]+)[ \t]+right[ \t]+([^ \t]+)[ \t]+(.*)} $line \
+			lmatch left right rest] {
+	    set fleft [expr {$left - $halfvalue}]
+	    set fright [expr {$right + $halfvalue}]
+	    puts $fanno "left $fleft right $fright $rest"
+         } else {
+            puts $fanno $line	;# failed to parse, so ignore it
+         }
+      } else {
+         puts $fanno $line
+      }
+   } else {
+      puts $fanno $line
+   }
+}
+
+puts stdout "Done!"

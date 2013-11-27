@@ -243,7 +243,6 @@ if {[llength ${bufname}(output)] != 1} {
 
 set nets [dict create]
 set splitnets [dict create]
-set hiernets [dict create]
 set outputs [dict create]
 
 while {[gets $fpin line] >= 0} {
@@ -283,12 +282,7 @@ dict for {netname inst} $nets {
    set netsize [dict size $inst]
    if {$netsize > $maxfanout} {
       if {[lsearch $ignorenets $netname] >= 0} {continue}
-   }
-
-   set hierlevel 0
-   while {$netsize > $maxfanout} {
       puts stdout "Net $netname fanout $netsize exceeds maximum of $maxfanout"
-
       set subnets [/ $netsize $maxfanout]
       set remain [% $netsize $maxfanout]
       if {$remain > 0} {incr subnets}
@@ -297,6 +291,15 @@ dict for {netname inst} $nets {
       # Clustering algorithm (Voronoi tessalation)
       # Modified 8/19/2013 to ensure a maximum number of entries in a
       # single cluster.
+      #
+      # The "tree" is only 1 deep, so if the number of clusters exceeds
+      # maxfanout, then set a return flag so that the calling script
+      # will know that it needs to run clocktree again.  Clocktree can
+      # be run as many times as needed, and will keep making the trees
+      # nest one level deeper on each run, as needed.
+
+      if {$subnets > $maxfanout} {
+      }
 
       set centers {}
       set idxused {}
@@ -467,45 +470,12 @@ dict for {netname inst} $nets {
 	    }
 	 }
       }
+
+      # Create a record in the "splitnets" dictionary
+      set clustinfo [list $clusters $subnets]
+      dict set splitnets $netname $clustinfo
+
       puts stdout ""
-
-      if {$hierlevel == 0} {
-
-	 # Create a record in the "splitnets" dictionary
-
-         set clustinfo [list $clusters $subnets]
-         dict set splitnets $netname $clustinfo
-      } else {
-
-	 # Create a record in the "hiernets" dictionary
-
-         set clustinfo [list $clusters $subnets]
-         dict set hiernets ${netname}_hier${hierlevel} $clustinfo
-      }
-
-      # The "tree" is only 1 deep, so if the number of clusters exceeds
-      # maxfanout, then set a return flag so that the calling script
-      # will know that it needs to run clocktree again.  Clocktree can
-      # be run as many times as needed, and will keep making the trees
-      # nest one level deeper on each run, as needed.
-
-      set netsize $subnets
-      if {$netsize > $maxfanout} {
-
-	 # build up a new "inst" dictionary to include one buffer cell per
-	 # cluster, positioned at the cluster center.  Buffers are local
-	 # to this dictionary and don't have to have unique instance names
-
-	 set inst [dict create]
-         for {set i 0} {$i < $netsize} {incr i} {
-	    set cctr [lindex $centers $i]
-	    set px [lindex $cctr 0]
-	    set py [lindex $cctr 1]
-            set ilist [list $bufinpin $px $py -1 {}]
-	    dict set inst ${bufname}_${i} $ilist
-	 }
-	 incr hierlevel
-      }
    }
 }
 
@@ -528,103 +498,20 @@ while {[gets $fnet line] >= 0} {
 
 	 # Dump the buffers in the tree first
 	 dict for {netname clusters} $splitnets {
-
-	    # Check if there is a hierarchy to this buffer tree
-	    set i 1
-	    while {![catch {dict get $hiernets ${netname}_hier${i}}]} {
-	       incr i
-	    }
-	    incr i -1
-	    if {$i == 0} {
-
-	       # Simple case:  one level of hierarchy, all the buffers have their
-	       # inputs connected to the original net "netname".  Output net name
-	       # is encoded as netname + "_buf" + cluster number (0 to maxfanout-1)
-
-	       set subnets [lindex $clusters 1]
-	       for {set i 0} {$i < $subnets} {incr i} {
-
-	          puts -nonewline $fout " .gate $bufname ${bufinpin}=${netname}"
-
-	          set outname ${netname}_buf${i}
-	          if {[string first \[ $outname] >= 0} {
-		     # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
-		     set outname "[string map {\] ""} $outname]\]"
-	          }
-	          if {[string first < $outname] >= 0} {
-		     # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
-		     # create problems downstream.
-		     set outname "[string map {< _ > ""} $outname]"
-	          }
-	          puts $fout " ${bufoutpin}=${outname}"
+	    set subnets [lindex $clusters 1]
+	    for {set i 0} {$i < $subnets} {incr i} {
+	       puts -nonewline $fout " .gate $bufname ${bufinpin}=${netname}"
+	       set outname ${netname}_buf${i}
+	       if {[string first \[ $outname] >= 0} {
+		  # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
+		  set outname "[string map {\] ""} $outname]\]"
 	       }
-	    } else {
-	       # Hierarchy top is "netname", every other net gets modified to
-	       # "netname" + "_hier" + hierarchy level + "_buf" + cluster number
-
-	       set last -1
-	       while {$i > 0} {
-
-		  if {$last == -1} {
-		     set hierlastname ${netname}
-		  } else {
-	             set hierlist [dict get $hiernets ${netname}_hier${last}]
-	             set hiersubnets [lindex $hierlist 1]
-	             set lastclust   [lindex $hierlist 0]
-		  }
-
-	          set hiernetname ${netname}_hier${i}
-	          set hierclust [dict get $hiernets ${netname}_hier${i}]
-	          set subnets [lindex $hierclust 1]
-	          for {set j 0} {$j < $subnets} {incr j} {
-
-		     if {$last != -1} {
-		        set hierlevel [dict get $lastclust ${bufname}_${j}/${bufinpin}]
-		        set hierlastname ${netname}_hier${last}_buf${hierlevel}
-		     }
-	             puts -nonewline $fout " .gate $bufname ${bufinpin}=${hierlastname}"
-
-	             set outname ${hiernetname}_buf${j}
-	             if {[string first \[ $outname] >= 0} {
-		        # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
-		        set outname "[string map {\] ""} $outname]\]"
-	             }
-	             if {[string first < $outname] >= 0} {
-		        # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
-		        # create problems downstream.
-		        set outname "[string map {< _ > ""} $outname]"
-	             }
-	             puts $fout " ${bufoutpin}=${outname}"
-	          }
-		  set last $i
-		  incr i -1
+	       if {[string first < $outname] >= 0} {
+		  # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
+		  # create problems downstream.
+		  set outname "[string map {< _ > ""} $outname]"
 	       }
-
-	       # Last hierarchy level
-
-	       set cluster [dict get $splitnets ${netname}]
-	       set subnets [lindex $cluster 1]
-	       for {set j 0} {$j < $subnets} {incr j} {
-		  # Pick up which net is the input to this gate from hiernets
-	          set hierlist [dict get $hiernets ${netname}_hier1]
-
-	          set hiersubnets [lindex $hierlist 1]
-	          set hierclust   [lindex $hierlist 0]
-		  set hierlevel [dict get $hierclust ${bufname}_${j}/${bufinpin}]
-	          puts -nonewline $fout " .gate $bufname ${bufinpin}=${netname}_hier1_buf${hierlevel}"
-
-	          set outname ${netname}_buf${j}
-	          if {[string first \[ $outname] >= 0} {
-		     # recast "[X]_bufN" as "[X_bufN]" so as not to hose Bdnet2Verilog
-		     set outname "[string map {\] ""} $outname]\]"
-	          }
-	          if {[string first < $outname] >= 0} {
-		     # recast "sig<X>_bufN" as "sig_X_bufN" so as not to
-		     # create problems downstream.
-		     set outname "[string map {< _ > ""} $outname]"
-	          }
-	          puts $fout " ${bufoutpin}=${outname}"
-	       }
+	       puts $fout " ${bufoutpin}=${outname}"
 	    }
 	 }
       }
