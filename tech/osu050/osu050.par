@@ -50,7 +50,7 @@ TWMC*chip.aspect.ratio : 0.75
 
 TWSC*feedThruWidth    : 240 layer 1
 TWSC*do.global.route  : on
-# TWSC*ignore_feeds     : true
+TWSC*ignore_feeds     : true
 TWSC*call_row_evener	: true
 TWSC*even_rows_maximally : true
 # TWSC*no.graphics    : on

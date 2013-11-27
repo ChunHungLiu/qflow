@@ -18,9 +18,9 @@
 # into the original cell plus the filler cell in front.
 #---------------------------------------------------------------------------
 
-if {$argc < 3} {
-   puts -nonewline stdout "Usage:  place2def <project_name> <qrouter_path> "
-   puts stdout "<fill_cell> <technology_lef> ..."
+if {$argc < 2} {
+   puts -nonewline stdout "Usage:  place2def <project_name> "
+   puts stdout "<fill_cell> \[<num_layers>\]"
    exit 0
 }
 
@@ -30,54 +30,19 @@ if {$argc < 3} {
 puts stdout "Running place2def.tcl"
 
 set topname [lindex $argv 0]
+set fill_cell [lindex $argv 1]
+
+set numlayers 0
+if {$argc > 2} {
+   set numlayers [lindex $argv 2]
+}
 
 set pl1name ${topname}.pl1
 set pl2name ${topname}.pl2
-set parname ${topname}.par
 set pinname ${topname}.pin
 set defname ${topname}.def
-set cfgname ${topname}.cfg
+set obsname ${topname}.obs
 set infoname ${topname}.info
-
-# Number of layers we want to use for routing is determined
-# by counting the layers listed in the .par file.
-
-if [catch {open $parname r} fpar] {
-   puts stderr "Error: can't open file $parname for input"
-   return
-}
-
-set qrouter_path [lindex $argv 1]
-set fill_cell [lindex $argv 2]
-set leffiles [lrange $argv 3 end]
-
-#-----------------------------------------------------------------
-# Pick up the number of routing layers to use by counting
-# "layer" lines in the .par file.
-#-----------------------------------------------------------------
-
-set numlayers 0
-set rulesection 0
-
-while {[gets $fpar line] >= 0} {
-   if {[regexp {^[ \t]*RULES} $line lmatch] == 1} {
-      set rulesection 1
-   }
-   if {$rulesection == 1} {
-      if {[regexp {^[ \t]*layer[ \t]*} $line lmatch] == 1} { 
-	 incr numlayers
-      }
-      if {[regexp {^[ \t]*ENDRULES} $line lmatch] == 1} {
-	 set rulesection 0
-      }
-   }
-}
-close $fpar
-
-if {$numlayers == 0} {
-   puts stdout "No layers specified in .par file.  Using default 3"
-   set numlayers 3
-}
 
 if [catch {open $pl1name r} fpl1] {
    puts stderr "Error: can't open file $pl1name for input"
@@ -94,8 +59,8 @@ if [catch {open $defname w} fdef] {
    return
 }
 
-if [catch {open $cfgname w} fcfg] {
-   puts stderr "Error: can't open file $cfgname for output"
+if [catch {open $obsname w} fobs] {
+   puts stderr "Error: can't open file $obsname for output"
    return
 }
 
@@ -115,75 +80,25 @@ puts $fdef ""
 # Part 1:  Area and routing tracks
 #-----------------------------------------------------------------
 
-# Defaults for older versions of qrouter that did not output the version
-# number to the info file
-set major 1
-set minor 1
-set subv  0
-set scripting 0
-
-catch {exec $qrouter_path -i $infoname}
-
-set finf [open $infoname r]
-if {$finf != {}} {
-   while {[gets $finf line] >= 0} {
-
-      # Versions of qrouter since 1.2.3 provide version information, including
-      # whether or not qrouter was compiled with Tcl/Tk and supports scripting
-
-      if {[regexp {qrouter ([1-9]+)\.([1-9]+)\.([1-9]+)(.*)} $line lmatch \
-		major minor subv rest]} {
-	 if {[regexp {[ \t]*\.T} $rest lmatch]} {set scripting 1}
-      }
-   }
-}
-close $finf
-
-#-----------------------------------------------------------------
-# Start route configuration file
-# The nature of this file depends on the version of qrouter used
-# Only the LEF file information needs to be in the file at this
-# time, but it is critical to have it present so that qrouter
-# will be able to parse the LEF files and generate the route
-# layer information.
-#-----------------------------------------------------------------
-
-if {$scripting == 0} {
-   puts $fcfg "# route configuration file"
-   puts $fcfg "# for project ${topname}"
-   puts $fcfg ""
-   puts $fcfg "Num_layers  $numlayers"
-   puts $fcfg ""
-   foreach leffile $leffiles {puts $fcfg "lef ${leffile}"}
-} else {
-   puts $fcfg "# qrouter runtime script"
-   puts $fcfg "# for project ${topname}"
-   puts $fcfg ""
-   puts $fcfg "verbose 1"	;# limit the amount of output
-
-   # In the script, we need to read the LEF files first, then
-   # define how many layers will actually be used for routing
-
-   foreach leffile $leffiles {puts $fcfg "read_lef ${leffile}"}
-   puts $fcfg "layers  $numlayers"
-   puts $fcfg ""
-}
-
-puts $fcfg ""
-flush $fcfg
-
 #-----------------------------------------------------------------
 # Read the .pl2 file and get the full die area (components only)
 #-----------------------------------------------------------------
 
-# To avoid having to parse a LEF file from a Tcl script, I have
-# made a qrouter "-i" option to print out route layer information;
-# this should be found in file ${topname}.info
+# If a number of route layers wasn't specified in the project_vars.sh
+# script, then use the number of layers defined in the config file.
 
-catch {exec $qrouter_path -i $infoname -c $cfgname}
+if [catch {open $infoname r} finf] {
+   puts stdout "Warning:  No file $infoname generated, using defaults."
 
-set finf [open $infoname r]
-if {$finf != {}} {
+   set pitchx 160
+   set pitchy 200
+   set offsetx 80
+   set offsety 100
+   set widthx 160
+   set widthy 200
+
+} else {
+
    set i 0
    while {[gets $finf line] >= 0} {
 
@@ -215,6 +130,7 @@ if {$finf != {}} {
       }
    }
    close $finf
+   if {($numlayers == 0) || ($numlayers > $i)} {set numlayers $i}
 
    # NOTE:  Treating all pitches the same for all layers in the same
    # direction.  This is good for doing various calculations on cell
@@ -236,15 +152,6 @@ if {$finf != {}} {
       set widthx [expr 100 * $metal1(width)]
       set widthy [expr 100 * $metal2(width)]
    }
-} else {
-   puts stdout "Warning:  No file $infoname generated, using defaults."
-
-   set pitchx 160
-   set pitchy 200
-   set offsetx 80
-   set offsety 100
-   set widthx 160
-   set widthy 200
 }
 
 # Add numlayers to the configuration file now that we know it
@@ -399,16 +306,16 @@ set coreytop_um [expr ($coreytop + $pitchy) / 100.0]
 if {$numlayers > 2} {
    set mname $metal1(name)
    # 1. Top
-   puts $fcfg \
+   puts $fobs \
 	"obstruction $diexbot_um $coreytop_um $diextop_um $dieytop_um $mname"
    # 2. Bottom
-   puts $fcfg \
+   puts $fobs \
 	"obstruction $diexbot_um $dieybot_um $diextop_um $coreybot_um $mname"
    # 3. Left
-   puts $fcfg \
+   puts $fobs \
 	"obstruction $diexbot_um $dieybot_um $corexbot_um $dieytop_um $mname"
    # 4. Right
-   puts $fcfg \
+   puts $fobs \
 	"obstruction $corextop_um $dieybot_um $diextop_um $dieytop_um $mname"
 }
 
@@ -419,38 +326,38 @@ if {$metal2(orient) == "vertical"} {
    for {set i 3} {$i <= $numlayers} {incr i 2} {
       set mname [subst \$metal${i}(name)]
       # 1. Top
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corexbot_um $coreytop_um $corextop_um $dieytop_um $mname"
       # 2. Bottom
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corexbot_um $dieybot_um $corextop_um $coreybot_um $mname"
    }
    for {set i 2} {$i <= $numlayers} {incr i 2} {
       set mname [subst \$metal${i}(name)]
       # 3. Left
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $diexbot_um $coreybot_um $corexbot_um $coreytop_um $mname"
       # 4. Right
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corextop_um $coreybot_um $diextop_um $coreytop_um $mname"
    }
 } else {
    for {set i 3} {$i <= $numlayers} {incr i 2} {
       set mname [subst \$metal${i}(name)]
       # 1. Left
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $diexbot_um $coreybot_um $corexbot_um $coreytop_um $mname"
       # 2. Right
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corextop_um $coreybot_um $diextop_um $coreytop_um $mname"
    }
    for {set i 2} {$i <= $numlayers} {incr i 2} {
       set mname [subst \$metal${i}(name)]
       # 3. Top
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corexbot_um $coreytop_um $corextop_um $dieytop_um $mname"
       # 3. Bottom
-      puts $fcfg \
+      puts $fobs \
 	"obstruction $corexbot_um $dieybot_um $corextop_um $coreybot_um $mname"
    }
 }
@@ -478,29 +385,12 @@ while {![catch {set yvals($i)}]} {
 #      set y4 [expr {$y3 - 196}]
 #   }
    set y4 [expr {$y3 - 40}]
-#  puts $fcfg "obstruction $corexbot $y1 $corextop $y2 $metal1(name)"
-#  puts $fcfg "obstruction $corexbot $y4 $corextop $y3 $metal1(name)"
+#  puts $fobs "obstruction $corexbot $y1 $corextop $y2 $metal1(name)"
+#  puts $fobs "obstruction $corexbot $y4 $corextop $y3 $metal1(name)"
    incr i
 }
 
-# In the scripted version of qrouter, the runtime script continues
-# with the command to read the DEF file, route, and write the
-# results.
-
-# This script performs a fairly standard routing run, using
-# mostly defaults.  The main thing that differs from qrouter's
-# internal default script is that a route failure causes it to
-# dump a file containing congestion information, so that this
-# information can be fed back to to placement tool to improve
-# the placement and increase the probability of routing on the
-# next iteration.
-
-if {$scripting != 0} {
-   puts $fcfg "read_def ${topname}.def"
-   puts $fcfg "qrouter::congestion_route ${topname}.cinfo"
-}
-
-close $fcfg
+close $fobs
 
 #-----------------------------------------------------------------
 # Part 2:  Components and pins (placed)

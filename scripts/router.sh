@@ -18,9 +18,16 @@ set options=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $1}'`
 set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
 set argc=`echo $cmdargs | wc -w`
 
-if ($argc == 2) then
+if ($argc >= 2) then
    set argv1=`echo $cmdargs | cut -d' ' -f1`
    set argv2=`echo $cmdargs | cut -d' ' -f2`
+   if ($argc == 3) then
+      set statusin = `echo $cmdargs | cut -d' ' -f3`
+      if ($statusin == 2) then
+	 echo "Qrouter completed on first iteration, no need to run again."
+         exit 0
+      endif
+   endif
 else
    echo Usage:  router.sh [options] <project_path> <source_name>
    echo   where
@@ -115,9 +122,7 @@ if (${scripting} == "T") then
    if ( -f ${rootname}.cinfo && ( -M ${rootname}.cinfo \
 		> -M ${rootname}.def )) then
       ${scriptdir}/decongest.tcl ${rootname} ${techdir}/${leffile} \
-		${fillcell} 6 |& tee -a ${synthlog}
-      cp ${rootname}.cel ${rootname}.cel.bak
-      mv ${rootname}.acel ${rootname}.cel
+		${fillcell} |& tee -a ${synthlog}
    endif
 endif
 
@@ -127,3 +132,8 @@ mv ${rootname}_route.def ${rootname}.def
 #------------------------------------------------------------
 # Done!
 #------------------------------------------------------------
+
+set endtime = `date`
+echo "Router script ended on $endtime" >> $synthlog
+
+exit 0

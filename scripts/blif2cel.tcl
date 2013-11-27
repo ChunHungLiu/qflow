@@ -24,7 +24,7 @@
 set units 100
 set pitchx 0		;# value overridden from LEF file
 set pitchy 0		;# value overridden from LEF file
-set trackskip 1		;# reduce number of implicit feedthroughs
+set trackskip 0		;# reduce number of implicit feedthroughs
 			;# to avoid routing congestion
 
 set bliffile [lindex $argv 0]

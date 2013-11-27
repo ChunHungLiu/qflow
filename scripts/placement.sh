@@ -8,6 +8,7 @@
 #----------------------------------------------------------
 # Tim Edwards, 5/16/11, for Open Circuit Design
 # Modified April 2013 for use with qflow
+# Modified November 2013 for congestion feedback
 #----------------------------------------------------------
 
 if ($#argv < 2) then
@@ -16,7 +17,7 @@ if ($#argv < 2) then
 endif
 
 # Split out options from the main arguments
-set argline=(`getopt "kd" $argv[1-]`)
+set argline=(`getopt "kdf" $argv[1-]`)
 set cmdargs=`echo "$argline" | awk 'BEGIN {FS = "-- "} END {print $2}'`
 set argc=`echo $cmdargs | wc -w`
 
@@ -32,6 +33,7 @@ else
    echo       [options] are:
    echo			-k	keep working files
    echo			-d	generate DEF file for routing
+   echo			-f	final placement.  Don't run if routing succeeded
    echo
    echo	  Options to specific tools can be specified with the following
    echo	  variables in project_vars.sh:
@@ -42,6 +44,7 @@ endif
 
 set keep=0
 set makedef=0
+set final = 0
 
 foreach option (${argline})
    switch (${option})
@@ -51,6 +54,9 @@ foreach option (${argline})
       case -d:
          set makedef=1
          breaksw
+      case -f:
+         set final=1
+	 breaksw
       case --:
          break
    endsw
@@ -78,6 +84,23 @@ cd ${projectpath}
 #----------------------------------------------------------
 
 cd ${layoutdir}
+
+# Check if a .acel file exists.  This file is produced by qrouter and
+# its existance indicates that qrouter is passing back congestion
+# information to TimberWolf for a final placement pass using fill to
+# break up congested areas.
+
+if ( -f ${rootname}.acel && ( -M ${rootname}.acel > -M ${rootname}.cel )) then
+   cp ${rootname}.cel ${rootname}.cel.bak
+   mv ${rootname}.acel ${rootname}.cel
+   set final = 1
+else
+   if ( ${final} == 1 ) then
+      # Called for final time, but routing already succeeded, so just exit
+      echo "First pass routing succeeded;  final placement iteration is unnecessary."
+      exit 2
+   endif
+endif
 
 # Check if a .cel2 file exists and needs to be appended to .cel
 # If the .cel2 file is newer than .cel, then truncate .cel and
@@ -123,49 +146,140 @@ endif
 # 2) Prepare DEF and .cfg files for qrouter
 #---------------------------------------------------
 
+# First prepare a simple .cfg file that can be used to point qrouter
+# to the LEF files when generating layer information using the "-i" option.
+
 if ($makedef == 1) then
-   if ( "$techleffile" == "" ) then
-      ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-                $fillcell ${techdir}/$leffile >>& ${synthlog}
+
+   #------------------------------------------------------------------
+   # Determine the version number and availability of scripting
+   # in qrouter.
+   #------------------------------------------------------------------
+
+   set version=`${bindir}/qrouter -v 0 -h | tail -1`
+   set major=`echo $version | cut -d. -f1`
+   set minor=`echo $version | cut -d. -f2`
+   set subv=`echo $version | cut -d. -f3`
+   set scripting=`echo $version | cut -d. -f4`
+
+   # Create the initial (bootstrap) configuration file
+
+   if ( $scripting == "T" ) then
+      if ( "$techleffile" == "" ) then
+         echo "read_lef ${techdir}/$leffile" > ${rootname}.cfg
+      else
+         echo "read_lef ${techdir}/$techleffile" > ${rootname}.cfg
+      endif
    else
-      ${scriptdir}/place2def.tcl $rootname ${bindir}/qrouter \
-		$fillcell ${techdir}/$techleffile \
-		${techdir}/$leffile >>& ${synthlog}
+      if ( "$techleffile" == "" ) then
+         echo "lef ${techdir}/$leffile" > ${rootname}.cfg
+      else
+         echo "lef ${techdir}/$techleffile" > ${rootname}.cfg
+      endif
    endif
+
+   ${bindir}/qrouter -i ${rootname}.info -c ${rootname}.cfg
+
+   # Run place2def to turn the TimberWolf output into a DEF file
+
+   if ( ${?route_layers} ) then
+      ${scriptdir}/place2def.tcl $rootname $fillcell ${route_layers} \
+		 >>& ${synthlog}
+   else
+      ${scriptdir}/place2def.tcl $rootname $fillcell >>& ${synthlog}
+   endif
+
+   #---------------------------------------------------------------------
+   # Spot check:  Did place2def produce file ${rootname}.def?
+   #---------------------------------------------------------------------
+
+   if ( !( -f ${rootname}.def || ( -M ${rootname}.def < -M ${rootname}.pin ))) then
+      echo "place2def failure:  No file ${rootname}.def." |& tee -a ${synthlog}
+      echo "Premature exit." |& tee -a ${synthlog}
+      exit 1
+   endif
+
+   # If the user didn't specify a number of layers for routing as part of
+   # the project variables, then the info file created by qrouter will have
+   # as many lines as there are route layers defined in the technology LEF
+   # file.
+
+   if ( !( ${?route_layers} )) then
+      set route_layers = `cat ${rootname}.info | grep -e horizontal -e vertical | wc -l`
+   endif
+
+   # Create the main configuration file
 
    # Variables "via_pattern" (none, normal, invert) and "via_stacks"
    # can be specified in the tech script, and are appended to the
    # qrouter configuration file.  via_stacks defaults to 2 if not
    # specified.  It can be overridden from the user's .cfg2 file.
 
-   if ( ${?via_pattern} ) then
+   if (${scripting} == "T") then
+      echo "# qrouter runtime script for project ${rootname}" > ${rootname}.cfg
       echo "" >> ${rootname}.cfg
-      echo "via pattern ${via_pattern}" >> ${rootname}.cfg
+      echo "verbose 1" >> ${rootname}.cfg
+      echo "read_lef ${techdir}/${leffile}" >> ${rootname}.cfg
+      if ( "$techleffile" != "" ) then
+         echo "read_lef ${techdir}/${techleffile}" >> ${rootname}.cfg
+      endif
+      echo "layers ${route_layers}" >> ${rootname}.cfg
+      if ( ${?via_pattern} ) then
+         echo "" >> ${rootname}.cfg
+         echo "via pattern ${via_pattern}" >> ${rootname}.cfg
+      endif
+      if (! ${?via_stacks} ) then
+         set via_stacks=2
+         echo "via stack ${via_stacks}" >> ${rootname}.cfg
+      endif
+
+   else
+      echo "# qrouter configuration for project ${rootname}" > ${rootname}.cfg
+      echo "" >> ${rootname}.cfg
+      echo "lef ${techdir}/${leffile}" >> ${rootname}.cfg
+      if ( "$techleffile" != "" ) then
+         echo "lef ${techdir}/${techleffile}" >> ${rootname}.cfg
+      endif
+      echo "num_layers ${route_layers}" >> ${rootname}.cfg
+      if ( ${?via_pattern} ) then
+         echo "" >> ${rootname}.cfg
+         echo "via pattern ${via_pattern}" >> ${rootname}.cfg
+      endif
+      if (! ${?via_stacks} ) then
+         set via_stacks=2
+         echo "stack ${via_stacks}" >> ${rootname}.cfg
+      endif
    endif
 
-   if (! ${?via_stacks} ) then
-      set via_stacks=2
+   # Add obstruction fence around design, created by place2def.tcl
+
+   if ( -f ${rootname}.obs ) then
+      cat ${rootname}.obs >> ${rootname}.cfg
    endif
 
-   echo "" >> ${rootname}.cfg
-   echo "stack ${via_stacks}" >> ${rootname}.cfg
+   # Scripted version continues with the read-in of the DEF file
+
+   if (${scripting} == "T") then
+      echo "read_def ${rootname}.def" >> ${rootname}.cfg
+   endif
 
    # If there is a file called ${rootname}.cfg2, then append it to the
-   # ${rootname}.cfg file
+   # ${rootname}.cfg file.  It will be used to define all routing behavior.
+   # Otherwise, if using scripting, then append the appropriate routing
+   # command or procedure based on whether this is a pre-congestion
+   # estimate of routing or the final routing pass.
 
    if ( -f ${rootname}.cfg2 ) then
       cat ${rootname}.cfg2 >> ${rootname}.cfg
+   else
+      if (${scripting} == "T") then
+	 if (${final} == 0) then
+	    echo "qrouter::congestion_route ${rootname}.cinfo" >> ${rootname}.cfg
+	 else
+	    echo "qrouter::standard_route" >> ${rootname}.cfg
+	 endif
+      endif
    endif
-endif
-
-#---------------------------------------------------------------------
-# Spot check:  Did place2def produce file ${rootname}.def?
-#---------------------------------------------------------------------
-
-if ( !( -f ${rootname}.def || ( -M ${rootname}.def < -M ${rootname}.pin ))) then
-   echo "place2def failure:  No file ${rootname}.def." |& tee -a ${synthlog}
-   echo "Premature exit." |& tee -a ${synthlog}
-   exit 1
 endif
 
 #---------------------------------------------------
@@ -200,3 +314,8 @@ endif
 #------------------------------------------------------------
 # Done!
 #------------------------------------------------------------
+
+set endtime = `date`
+echo "Placement script ended on $endtime" >> $synthlog
+
+exit 0

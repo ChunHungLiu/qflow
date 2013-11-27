@@ -131,7 +131,13 @@ set blif_opts = ""
 set blif_opts = "${blif_opts} -buf ${bufcell} ${bufpin_in} ${bufpin_out}"
 
 # Set option for generating only the flattened top-level cell
-set blif_opts = "${blif_opts} -top ${rootname}"
+# set blif_opts = "${blif_opts} ${rootname}"
+
+# Determine version of yosys
+set versionstring = `${bindir}/yosys -V | cut -d' ' -f2`
+set major = `echo $versionstring | cut -d. -f1`
+set minor = `echo $versionstring | cut -d. -f2`
+set revision = `echo $versionstring | cut -d. -f2`
       
 cat > ${rootname}.ys << EOF
 # Synthesis script for yosys created by qflow
@@ -142,9 +148,16 @@ foreach subname ( $uniquedeplist )
    echo "read_verilog ${subname}.v" >> ${rootname}.ys
 end
 
+# Will not support yosys 0.0.x syntax; flag a warning instead
+
+if ( ${major} == 0 && ${minor} == 0 ) then
+   echo "Warning: yosys 0.0.x unsupported.  Please update!"
+   echo "Output is likely to be incompatible with qflow."
+endif
+
 cat >> ${rootname}.ys << EOF
 # High-level synthesis
-hierarchy
+hierarchy -top ${rootname}
 EOF
 
 if ( ${?yosys_script} ) then
@@ -164,9 +177,6 @@ EOF
 endif
 
 cat >> ${rootname}.ys << EOF
-flatten ${rootname}
-hierarchy -top ${rootname}
-
 # Map to internal cell library
 techmap; opt
 
@@ -176,6 +186,7 @@ opt
 
 # Map combinatorial cells
 abc -liberty ${techdir}/${libertyfile}
+flatten
 
 # Cleanup
 opt
@@ -402,5 +413,8 @@ endif
 # user directions about what to put in the .par file, like number of
 # rows or cell aspect ratio, etc., etc.
 #-------------------------------------------------------------------------
-echo "Edit ${layoutdir}/${rootname}.par, then run placement and route" \
-		|& tee -a ${synthlog}
+# echo "Edit ${layoutdir}/${rootname}.par, then run placement and route" \
+#		|& tee -a ${synthlog}
+
+set endtime = `date`
+echo "Synthesis script ended on $endtime" >> $synthlog

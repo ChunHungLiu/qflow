@@ -60,6 +60,7 @@ set doplace=0
 set dobuffer=0
 set dosta=0
 set doroute=0
+set dodecongest=0
 set doclean=0
 set dodisplay=0
 
@@ -115,11 +116,16 @@ while ($#argv > 0)
 	 set actions=1
 	 shift
 	 breaksw
+      case decongest:
+	 set dodecongest=1
+	 shift
+	 breaksw
       case build:
 	 set dosynth=1
 	 set doplace=1
 	 set dobuffer=1
 	 set doroute=1
+	 set dodecongest=1
 	 set actions=1
 	 shift
 	 breaksw
@@ -129,6 +135,7 @@ while ($#argv > 0)
 	 set dobuffer=1
 	 set dosta=1
 	 set doroute=1
+	 set dodecongest=1
 	 set doclean=1
 	 set dodisplay=1
 	 set actions=1
@@ -160,7 +167,8 @@ if ($dohelp == 1 || $#argv != 0) then
    echo "            place			Run initial placement"
    echo "            buffer			Buffer large fanout nets"
    echo "	     sta			Static timing analysis"
-   echo "            route			Run final placement and route"
+   echo "            route			Run placement and route"
+   echo "	     decongest			Run congestion analysis, final place and route"
    echo "            clean			Remove temporary working files"
    echo "            display			Display routed result"
    echo ""
@@ -300,6 +308,7 @@ if ( ! -f ${userfile} ) then
    echo "" >> ${userfile}
    echo "# Router command options:" >> ${userfile}
    echo "# -------------------------------------------" >> ${userfile}
+   echo "# set route_layers = " >> ${userfile}
    echo "# set via_stacks = " >> ${userfile}
    echo "# set qrouter_options = " >> ${userfile}
    echo ""
@@ -346,6 +355,17 @@ if ($doroute == 0) then
    echo -n "# " >> ${execfile}
 endif
 echo "${scriptdir}/router.sh ${projectpath} ${modulename}" >> ${execfile}
+
+if ($dodecongest == 0) then
+   echo -n "# " >> ${execfile}
+endif
+echo "${scriptdir}/placement.sh -f -d ${projectpath} ${modulename}" >> ${execfile}
+
+if ($dodecongest == 0) then
+   echo -n "# " >> ${execfile}
+endif
+echo -n "${scriptdir}/router.sh ${projectpath} ${modulename}" >> ${execfile}
+echo ' $status' >> ${execfile}
 
 if ($doclean == 0) then
    echo -n "# " >> ${execfile}

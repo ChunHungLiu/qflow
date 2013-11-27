@@ -1,7 +1,7 @@
 #!/usr/bin/tclsh
 #
 # Usage:
-#	decongest.tcl <rootname> <leffile> <fillcell> [<scale>]
+#	decongest.tcl <rootname> <leffile> <fillcell> [<scale> <offset>]
 #
 # Take information produced by qrouter's "congested" command,
 # and use it to add fill-cell padding to the most congested
@@ -17,9 +17,15 @@
 # annotating the cell instance name, it becomes easy to
 # add the fill cells into the DEF file after placement.
 #
-# "scale" gives a scalefactor which is more or less how many
-# filler cells it takes to match the area of an average
-# standard cell.
+# "scale" gives a scalefactor which is the amount of
+# increase in congestion that will cause an additional fill
+# cell to be added.  Default is 0.5.
+
+# "offset" is the amount of congestion in the .cinfo file
+# that is the baseline for adding fill.  Should be equal to
+# the minimum amount of congestion for which a fill cell is
+# added.  Default is 2.0.
+#
 #------------------------------------------------------------
 # Written by Tim Edwards, November 23, 2013
 #------------------------------------------------------------
@@ -27,11 +33,13 @@
 
 if {$argc != 3 && $argc != 4} {
    puts stderr "Bad argument list"
-   puts stderr "Usage: decongest.tcl <rootname> <leffile> <fillcell> [<scale>]"
+   puts stderr "Usage: decongest.tcl <rootname> <leffile> <fillcell> [<scale> <offset>]"
    exit 1
 }
 
 set units 100
+set scale 0.5
+set offset 2.0
 
 set cellname [file rootname [lindex $argv 0]]
 
@@ -41,11 +49,17 @@ set cinfofile ${cellname}.cinfo
 set lefname [lindex $argv 1]
 set fillcell [lindex $argv 2]
 
-if {$argc == 4} {
+if {$argc >= 4} {
    set scale [lindex $argv 3]
-} else {
-   set scale 1
 }
+if {$argc == 5} {
+   set offset [lindex $argv 4]
+}
+
+# Redefine scale and offset so that the calculations are easier
+   
+set offset [expr {$offset - $scale}]
+set scale [expr {1.0 / $scale}]
 
 if [catch {open $lefname r} flef] {
    puts stderr "Error: can't open file $lefname for input"
@@ -210,10 +224,14 @@ if {![regexp {[ \t]*Failures:[ \t]+([0-9]+)[ \t]+([0-9]+)} $line lmatch failures
 gets $finf line		;# Throw-away line
 
 set instlist {}
+set filllist {}
 while {[gets $finf line] >= 0} {
    if [regexp {[ \t]*([^ \t]+)[ \t]+([^ \t]+)} $line lmatch instname congest] {
-      lappend instlist $instname
-      if {$congest < 2.0} break		;# initial attempt, fixed congestion breakpoint
+      set numfill [expr {int(($congest - $offset) * $scale)}]
+      if {$numfill > 0} {
+         lappend instlist $instname
+         lappend filllist $numfill
+      }
    }   
 }
 
@@ -231,20 +249,25 @@ close $finf
 set fillinfo [lindex $fillwidths 0]
 set fillmacro [lindex $fillinfo 0]
 set fillvalue [lindex $fillinfo 1]
-set halfvalue [expr {$scale * $fillvalue / 2}]
-if {$scale > 1} {
-   set fillvalue "${fillvalue}X${scale}"
-}
+set halfvalue [expr {$fillvalue / 2}]
 
 while {[gets $fcel line] >= 0} {
    if [regexp {[ \t]*cell[ \t]*([0-9]+)[ \t]+([^ \t]+)} $line lmatch instnum instname] {
-      if {[lsearch $instlist $instname] >= 0} {
-         puts $fanno "cell $instnum ${fillmacro}.${fillvalue}.${instname}"
+      set instidx [lsearch $instlist $instname]
+      if {$instidx >= 0} {
+	 set fillnum [lindex $filllist $instidx]
+	 if {$fillnum > 1} {
+	    puts $fanno "cell $instnum ${fillmacro}.${fillvalue}X${fillnum}.${instname}"
+	    set adjust [expr {$fillnum * $halfvalue}]
+	 } else {
+	    puts $fanno "cell $instnum ${fillmacro}.${fillvalue}.${instname}"
+	    set adjust $halfvalue
+	 }
          gets $fcel line
          if [regexp {[ \t]*left[ \t]+([^ \t]+)[ \t]+right[ \t]+([^ \t]+)[ \t]+(.*)} $line \
 			lmatch left right rest] {
-	    set fleft [expr {$left - $halfvalue}]
-	    set fright [expr {$right + $halfvalue}]
+	    set fleft [expr {$left - $adjust}]
+	    set fright [expr {$right + $adjust}]
 	    puts $fanno "left $fleft right $fright $rest"
          } else {
             puts $fanno $line	;# failed to parse, so ignore it
