@@ -97,7 +97,7 @@ if ( -f ${rootname}.acel && ( -M ${rootname}.acel > -M ${rootname}.cel )) then
 else
    if ( ${final} == 1 ) then
       # Called for final time, but routing already succeeded, so just exit
-      echo "First pass routing succeeded;  final placement iteration is unnecessary."
+      echo "First attempt routing succeeded;  final placement iteration is unnecessary."
       exit 2
    endif
 endif
@@ -277,6 +277,9 @@ if ($makedef == 1) then
 	    echo "qrouter::congestion_route ${rootname}.cinfo" >> ${rootname}.cfg
 	 else
 	    echo "qrouter::standard_route" >> ${rootname}.cfg
+	    # Standard route falls back to the interpreter on failure,
+	    # so make sure that qrouter actually exits.
+	    echo "quit" >> ${rootname}.cfg
 	 endif
       endif
    endif

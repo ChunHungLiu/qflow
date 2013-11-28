@@ -19,12 +19,13 @@
 #
 # "scale" gives a scalefactor which is the amount of
 # increase in congestion that will cause an additional fill
-# cell to be added.  Default is 0.5.
+# cell to be added.  Default is 0.1.  Scale will be adjusted
+# upward according to the percentage of failing nets.
 
 # "offset" is the amount of congestion in the .cinfo file
 # that is the baseline for adding fill.  Should be equal to
 # the minimum amount of congestion for which a fill cell is
-# added.  Default is 2.0.
+# added.  Default is 0.6.
 #
 #------------------------------------------------------------
 # Written by Tim Edwards, November 23, 2013
@@ -38,8 +39,8 @@ if {$argc != 3 && $argc != 4} {
 }
 
 set units 100
-set scale 0.5
-set offset 2.0
+set scale 0.1
+set offset 0.6
 
 set cellname [file rootname [lindex $argv 0]]
 
@@ -55,11 +56,6 @@ if {$argc >= 4} {
 if {$argc == 5} {
    set offset [lindex $argv 4]
 }
-
-# Redefine scale and offset so that the calculations are easier
-   
-set offset [expr {$offset - $scale}]
-set scale [expr {1.0 / $scale}]
 
 if [catch {open $lefname r} flef] {
    puts stderr "Error: can't open file $lefname for input"
@@ -222,6 +218,21 @@ if {![regexp {[ \t]*Failures:[ \t]+([0-9]+)[ \t]+([0-9]+)} $line lmatch failures
 }
 
 gets $finf line		;# Throw-away line
+
+#------------------------------------------------------------------------
+# Scale and offset adjustments
+#------------------------------------------------------------------------
+
+set failratio [expr {($failures + 0.0) / $numnets}]
+
+# Redefine scale and offset so that the calculations are easier
+# Adjust the scale according to the fail ratio
+
+set scale [expr {1.0 / $scale}]
+set scale [expr {$scale + 60 * $failratio}]
+set offset [expr {$offset - (1.0 / $scale)}]
+
+#------------------------------------------------------------------------
 
 set instlist {}
 set filllist {}

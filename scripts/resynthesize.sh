@@ -129,7 +129,7 @@ if (-f ${techdir}/gate.cfg && -f ${bindir}/blifFanout ) then
 		-b ${bufcell} -i ${bufpin_in} -o ${bufpin_out} \
 		tmp.blif ${rootname}.blif >>& ${synthlog}
       set nchanged=$status
-      echo "nchanged=$nchanged" |& tee -a ${synthlog}
+      echo "gates resized: $nchanged" |& tee -a ${synthlog}
    end
 else
    set nchanged=0
