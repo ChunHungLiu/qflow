@@ -40,7 +40,7 @@ if {$argc != 3 && $argc != 4} {
 
 set units 100
 set scale 0.1
-set offset 0.6
+set offset 0.5
 
 set cellname [file rootname [lindex $argv 0]]
 
