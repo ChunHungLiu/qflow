@@ -219,10 +219,10 @@ if ($makedef == 1) then
       echo "# qrouter runtime script for project ${rootname}" > ${rootname}.cfg
       echo "" >> ${rootname}.cfg
       echo "verbose 1" >> ${rootname}.cfg
-      echo "read_lef ${techdir}/${leffile}" >> ${rootname}.cfg
       if ( "$techleffile" != "" ) then
          echo "read_lef ${techdir}/${techleffile}" >> ${rootname}.cfg
       endif
+      echo "read_lef ${techdir}/${leffile}" >> ${rootname}.cfg
       echo "layers ${route_layers}" >> ${rootname}.cfg
       if ( ${?via_pattern} ) then
          echo "" >> ${rootname}.cfg

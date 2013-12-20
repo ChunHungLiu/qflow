@@ -56,7 +56,7 @@ if ($#argv != 1 && $#argv != 2) then
    exit 1
 endif
 
-set techname=${argv[1]:al}
+set techname=${argv[1]}
 if ($#argv == 2) then
    set projectpath=${argv[2]}
 else

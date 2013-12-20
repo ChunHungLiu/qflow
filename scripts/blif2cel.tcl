@@ -81,7 +81,7 @@ flush stdout
 set macrolist {}
 while {[gets $fnet line] >= 0} {
    if [regexp {^[ \t]*\.gate[ \t]+([^ \t]+)} $line lmatch macro] {
-      lappend macrolist [string toupper $macro]
+      lappend macrolist $macro
    }
 }
 set macrolist [lsort -unique $macrolist]
@@ -332,7 +332,7 @@ set mode none
 set i 0
 while {[gets $fnet line] >= 0} {
    if [regexp {^[ \t]*\.gate[ \t]+([^ \t]+)[ \t]+(.*)$} $line lmatch macroname rest] {
-      set mode [string toupper $macroname]
+      set mode $macroname
       set left [set ${mode}(left)]
       set right [set ${mode}(right)]
       set width [set ${mode}(w)]
