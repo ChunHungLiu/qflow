@@ -96,7 +96,8 @@ cat >> ${rootname}.ys << EOF
 hierarchy -check
 EOF
 
-set yerrors = `eval ${bindir}/yosys -s ${rootname}.ys |& grep ERROR`
+set yerrors = `eval ${bindir}/yosys -s ${rootname}.ys |& sed -e "/\\/s#\\#/#g" \
+		| grep ERROR`
 set yerrcnt = `echo $yerrors | wc -c`
 
 if ($yerrcnt > 1) then
