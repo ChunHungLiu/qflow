@@ -463,10 +463,20 @@ void CleanupString(char text[LengthOfNodeName])
               CitationPnt[i]='\0';
 	   }
 	}
+
+	// Convert angle brackets to square brackets
+
 	Weirdpnt=strchr(text,'<');
 	if(Weirdpnt != NULL) *Weirdpnt='[';
 	Weirdpnt=strchr(text,'>');
 	if(Weirdpnt != NULL) *Weirdpnt=']';
+
+	// Disallow characters '.' and ':' in node names
+	
+	while ((Weirdpnt=strchr(text,'.')) != NULL)
+	   *Weirdpnt='_';
+	while ((Weirdpnt=strchr(text,':')) != NULL)
+	   *Weirdpnt='_';
 }
 
 
