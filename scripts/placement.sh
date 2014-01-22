@@ -232,6 +232,12 @@ if ($makedef == 1) then
          set via_stacks=2
          echo "via stack ${via_stacks}" >> ${rootname}.cfg
       endif
+      if ( ${?vddnet} ) then
+	 echo "vdd $vddnet" >> ${rootname}.cfg
+      endif
+      if ( ${?gndnet} ) then
+	 echo "gnd $gndnet" >> ${rootname}.cfg
+      endif
 
    else
       echo "# qrouter configuration for project ${rootname}" > ${rootname}.cfg

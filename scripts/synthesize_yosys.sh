@@ -123,11 +123,6 @@ end
 
 set blif_opts = ""
 
-# Set options for generating constants
-# if ($?tiehi) then
-#    if ( "$tiehi" != "") then
-#       set blif_opts = "${blif_opts} -true ${tiehi}
-
 # Set option for generating buffers
 set blif_opts = "${blif_opts} -buf ${bufcell} ${bufpin_in} ${bufpin_out}"
 
@@ -188,7 +183,23 @@ opt
 # Map combinatorial cells
 abc -liberty ${techdir}/${libertyfile}
 flatten
+EOF
 
+# Map tiehi and tielo, if they are defined
+
+if ( ${?tiehi} && ${?tiehipin_out} ) then
+   if ( "${tiehi}" != "" ) then
+      echo "hilomap -hicell $tiehi $tiehipin_out" >> ${rootname}.ys  
+   endif
+endif
+
+if ( ${?tielo} && ${?tielopin_out} ) then
+   if ( "${tielo}" != "" ) then
+      echo "hilomap -locell $tielo $tielopin_out" >> ${rootname}.ys  
+   endif
+endif
+
+cat >> ${rootname}.ys << EOF
 # Cleanup
 opt
 clean

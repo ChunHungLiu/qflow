@@ -85,8 +85,8 @@ if (${scripting} == "T") then
 #------------------------------------------------------------------
 
    echo "Running qrouter $version"
-   ${bindir}/qrouter -noc -s ${rootname}.cfg -p ${vddnet} -g ${gndnet} \
-		${qrouter_options} |& tee -a ${synthlog} | \
+   ${bindir}/qrouter -noc -s ${rootname}.cfg ${qrouter_options} \
+		|& tee -a ${synthlog} | \
 		grep - -e fail -e Progress -e remaining.\*00\$ \
 		-e remaining:\ \[1-9\]0\\\?\$
 else
