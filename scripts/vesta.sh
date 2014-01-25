@@ -50,6 +50,14 @@ if (! ${?vesta_options} ) then
    set vesta_options = ${options}
 endif
 
+# Check if last line of log file says "error condition"
+set errcond = `tail -1 ${synthlog} | grep "error condition" | wc -l`
+if ( ${errcond} == 1 ) then
+   echo "Synthesis flow stopped on error condition.  Static timing analysis"
+   echo "will not proceed until error condition is cleared."
+   exit 1
+endif
+
 #----------------------------------------------------------
 # Done with initialization
 #----------------------------------------------------------

@@ -66,6 +66,14 @@ if (! ${?clocktree_options}) then
    set clocktree_options = ""
 endif
 
+# Check if last line of log file says "error condition"
+set errcond = `tail -1 ${synthlog} | grep "error condition" | wc -l`
+if ( ${errcond} == 1 ) then
+   echo "Synthesis flow stopped on error condition.  Resynthesis will"
+   echo "not proceed until error condition is cleared."
+   exit 1
+endif
+
 #---------------------------------------------------------------------
 # Ensure that there is a .pin file in the layout directory.  Run the
 # "clock tree insertion tool" (which actually buffers all high-fanout
@@ -81,6 +89,7 @@ if (-f ${layoutdir}/${rootname}.pin ) then
 else
    echo "Error:  No pin file ${layoutdir}/${rootname}.pin." |& tee -a ${synthlog}
    echo "Did you run initial_placement.sh on this design?" |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -93,6 +102,7 @@ if ( !( -f ${synthdir}/${rootname}_tmp.blif || \
         < -M ${layoutdir}/${rootname}.cel ))) then
    echo "clocktree failure:  No file ${rootname}_tmp.blif." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -142,6 +152,7 @@ endif
 if ( $nchanged < 0 ) then
    echo "blifFanout failure:  See ${synthlog} for error messages"
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -219,6 +230,7 @@ if ( !( -f ${layoutdir}/${rootname}.cel || \
         < -M ${synthdir}/${rootname}.blif ))) then
    echo "blif2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 

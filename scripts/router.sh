@@ -58,6 +58,14 @@ if (! ${?qrouter_options} ) then
    set qrouter_options = ${options}
 endif
 
+# Check if last line of log file says "error condition"
+set errcond = `tail -1 ${synthlog} | grep "error condition" | wc -l`
+if ( ${errcond} == 1 ) then
+   echo "Synthesis flow stopped on error condition.  Detail routing"
+   echo "will not proceed until error condition is cleared."
+   exit 1
+endif
+
 #----------------------------------------------------------
 # Done with initialization
 #----------------------------------------------------------
@@ -112,6 +120,7 @@ if ( !( -f ${rootname}_route.def || ( -M ${rootname}_route.def \
 		< -M ${rootname}.def ))) then
    echo "qrouter failure:  No file ${rootname}_route.def." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 

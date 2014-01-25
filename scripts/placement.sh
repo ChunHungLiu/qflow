@@ -83,6 +83,14 @@ cd ${projectpath}
 # Done with initialization
 #----------------------------------------------------------
 
+# Check if last line of log file says "error condition"
+set errcond = `tail -1 ${synthlog} | grep "error condition" | wc -l`
+if ( ${errcond} == 1 ) then
+   echo "Synthesis flow stopped on error condition.  Placement will not proceed"
+   echo "until error condition is cleared."
+   exit 1
+endif
+
 cd ${layoutdir}
 
 # Check if a .acel file exists.  This file is produced by qrouter and
@@ -139,6 +147,7 @@ echo "Running TimberWolf placement" |& tee -a ${synthlog}
 if ( !( -f ${rootname}.pin || ( -M ${rootname}.pin < -M ${rootname}.cel ))) then
    echo "TimberWolf failure:  No file ${rootname}.pin." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -196,6 +205,7 @@ if ($makedef == 1) then
    if ( !( -f ${rootname}.def || ( -M ${rootname}.def < -M ${rootname}.pin ))) then
       echo "place2def failure:  No file ${rootname}.def." |& tee -a ${synthlog}
       echo "Premature exit." |& tee -a ${synthlog}
+      echo "Synthesis flow stopped due to error condition." >> ${synthlog}
       exit 1
    endif
 

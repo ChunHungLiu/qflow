@@ -73,6 +73,7 @@ endif
 
 if ("x$synthtool" == "xyosys") then
    echo "Error:  synthesize_odin called with synthtool set to yosys"
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -150,6 +151,7 @@ if ( !( -f ${rootname}.init || ( -M ${rootname}.init < -M ${rootname}.v ))) then
    echo "Verilog preprocessor failure:  No file ${rootname}.init." \
 		|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -177,6 +179,7 @@ if ( $errline == 1 ) then
    echo "Try code.google.com/p/vtr-verilog-to-routing/"
    echo "-----------------------------------------------"
    echo ""
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -190,6 +193,7 @@ if ( $errline == 1 ) then
    echo "Odin-II core dumped:"
    echo "See file ${synthlog} for details."
    echo ""
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -199,6 +203,7 @@ if ( $errline == 1 ) then
    echo "Odin-II verilog preprocessor errors occurred:"
    echo "See file ${synthlog} for details."
    echo ""
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -210,6 +215,7 @@ if ( $errline == 1 ) then
    echo "----------------------------------"
    cat ${synthlog} | grep "^line"
    echo ""
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -220,6 +226,7 @@ endif
 if ( !( -f ${rootname}.blif || ( -M ${rootname}.blif < -M ${rootname}.init ))) then
    echo "Odin-II synthesis failure:  No file ${rootname}.blif." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -275,6 +282,7 @@ if ( !( -f ${rootname}_mapped.blif || ( -M ${rootname}_mapped.blif \
    echo "ABC synthesis/mapping failure:  No file ${rootname}_mapped.blif." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -284,6 +292,7 @@ if ( $errline == 1 ) then
    echo "ABC exited due to failure:"
    echo "See file ${synthlog} for details."
    echo ""
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -354,6 +363,7 @@ if ( !( -f ${synthdir}/${rootname}_tmp.blif || \
 	( -M ${synthdir}/${rootname}_tmp.blif < -M ${rootname}.init ))) then
    echo "postproc failure:  No file ${rootname}_tmp.blif." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -377,6 +387,7 @@ if ( !( -f ${rootname}.blif || ( -M ${rootname}.blif \
    echo "outputprep failure:  No file ${rootname}.blif." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -442,6 +453,7 @@ if ( $nchanged < 0 ) then
    echo "blifFanout failure.  See file ${synthlog} for error messages." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -509,6 +521,7 @@ if ( !( -f ${layoutdir}/${rootname}.cel || ( -M ${layoutdir}/${rootname}.cel \
 	< -M ${rootname}.blif ))) then
    echo "blif2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 

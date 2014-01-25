@@ -110,6 +110,7 @@ if ($yerrcnt > 1) then
       echo "Errors detected in verilog source, need to be corrected." \
 		|& tee -a ${synthlog}
       echo "See file ${synthlog} for error output."
+      echo "Synthesis flow stopped due to error condition." >> ${synthlog}
       exit 1
    endif
 endif
@@ -218,6 +219,13 @@ endif
 # If not, call yosys with the default script.
 set usescript = `echo ${yosys_options} | grep -- -s | wc -l`
 
+# If there is a file ${rootname}_mapped.blif, move it to a temporary
+# place so we can see if yosys generates a new one or not.
+
+if ( -f ${rootname}_mapped.blif ) then
+   mv ${rootname}_mapped.blif ${rootname}_mapped_orig.blif
+endif
+
 echo "Running yosys for verilog parsing and synthesis" |& tee -a ${synthlog}
 if ( ${usescript} == 1 ) then
    eval ${bindir}/yosys ${yosys_options} |& tee -a ${synthlog}
@@ -229,12 +237,21 @@ endif
 # Spot check:  Did yosys produce file ${rootname}_mapped.blif?
 #---------------------------------------------------------------------
 
-if ( !( -f ${rootname}_mapped.blif || ( -M ${rootname}_mapped.blif \
-	< -M ${rootname}.blif ))) then
+if ( !( -f ${rootname}_mapped.blif )) then
    echo "outputprep failure:  No file ${rootname}_mapped.blif." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
+   # Replace the old blif file, if we had moved it
+   if ( -f ${rootname}_mapped_orig.blif ) then
+      mv ${rootname}_mapped_orig.blif ${rootname}_mapped.blif
+   endif
    exit 1
+else
+   # Remove the old blif file, if we had moved it
+   if ( -f ${rootname}_mapped_orig.blif ) then
+      rm ${rootname}_mapped_orig.blif
+   endif
 endif
 
 echo "Cleaning up output syntax" |& tee -a ${synthlog}
@@ -350,6 +367,7 @@ if ( $nchanged < 0 ) then
    echo "blifFanout failure.  See file ${synthlog} for error messages." \
 	|& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
@@ -417,6 +435,7 @@ if ( !( -f ${layoutdir}/${rootname}.cel || ( -M ${layoutdir}/${rootname}.cel \
 	< -M ${rootname}.blif ))) then
    echo "blif2cel failure:  No file ${rootname}.cel." |& tee -a ${synthlog}
    echo "Premature exit." |& tee -a ${synthlog}
+   echo "Synthesis flow stopped due to error condition." >> ${synthlog}
    exit 1
 endif
 
