@@ -189,6 +189,17 @@ if ($makedef == 1) then
 
    ${bindir}/qrouter -i ${rootname}.info -c ${rootname}.cfg
 
+   #---------------------------------------------------------------------
+   # Spot check:  Did qrouter produce file ${rootname}.info?
+   #---------------------------------------------------------------------
+
+   if ( !( -f ${rootname}.info || ( -M ${rootname}.info < -M ${rootname}.pin ))) then
+      echo "qrouter (-i) failure:  No file ${rootname}.info." |& tee -a ${synthlog}
+      echo "Premature exit." |& tee -a ${synthlog}
+      echo "Synthesis flow stopped due to error condition." >> ${synthlog}
+      exit 1
+   endif
+
    # Run place2def to turn the TimberWolf output into a DEF file
 
    if ( ${?route_layers} ) then
