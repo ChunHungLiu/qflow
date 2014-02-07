@@ -263,10 +263,10 @@ if ($makedef == 1) then
    else
       echo "# qrouter configuration for project ${rootname}" > ${rootname}.cfg
       echo "" >> ${rootname}.cfg
-      echo "lef ${techdir}/${leffile}" >> ${rootname}.cfg
       if ( "$techleffile" != "" ) then
          echo "lef ${techdir}/${techleffile}" >> ${rootname}.cfg
       endif
+      echo "lef ${techdir}/${leffile}" >> ${rootname}.cfg
       echo "num_layers ${route_layers}" >> ${rootname}.cfg
       if ( ${?via_pattern} ) then
          echo "" >> ${rootname}.cfg
