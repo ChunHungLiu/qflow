@@ -121,9 +121,10 @@ int fileCurrentLine;
 #define LATCHMASK	0x180
 
 // Pin sense
-#define SENSE_NONE	0	// Non-unate
-#define SENSE_POSITIVE	1	// Positive-unate
-#define SENSE_NEGATIVE	2	// Negative-unate
+#define SENSE_UNKNOWN	0	// Sense unknown
+#define SENSE_NONE	1	// Non-unate
+#define SENSE_POSITIVE	2	// Positive-unate
+#define SENSE_NEGATIVE	3	// Negative-unate
 
 // Signal transition direction
 #define EDGE_UNKNOWN	0
@@ -471,7 +472,7 @@ advancetoken(FILE *flib, char delimiter)
 /* negations ("!" or "'");  these should be ignored.		*/
 /*--------------------------------------------------------------*/
 
-pinptr parse_pin(cellptr newcell, char *token)
+pinptr parse_pin(cellptr newcell, char *token, short sense_predef)
 {
     pinptr newpin, lastpin;
     char *pinname, *sptr;
@@ -519,7 +520,7 @@ pinptr parse_pin(cellptr newcell, char *token)
     newpin->type = INPUT;	// The default; modified later, if not an input
     newpin->capr = 0.0;
     newpin->capf = 0.0;
-    newpin->sense = SENSE_NONE;	// Again, modified later if not true.
+    newpin->sense = sense_predef;  // Again, modified later if not true.
     newpin->propdelr = NULL;
     newpin->propdelf = NULL;
     newpin->transr = NULL;
@@ -1605,7 +1606,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
     int i, j;
     double gval;
     char *iptr;
-    short timing_type;
+    short timing_type, sense_type;
 
     lutable *newtable, *reftable;
     cell *newcell, *lastcell;
@@ -1691,7 +1692,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			    token = advancetoken(flib, 0);
 			    token = advancetoken(flib, ';');
 			    newtable->var2 = get_table_type(token);
-			    if (newtable->var1 == TRANSITION_TIME || newtable->var1 == RELATED_TIME)
+			    if (newtable->var2 == TRANSITION_TIME || newtable->var2 == RELATED_TIME)
 				newtable->invert = 1;
 			}
 			else if (!strcasecmp(token, "index_1")) {
@@ -1953,7 +1954,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		    if (!strcmp(token, "("))
 			token = advancetoken(flib, ')');	// Close parens
 
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 
 		    token = advancetoken(flib, 0);	// Find start of block
 		    if (strcmp(token, "{"))
@@ -2003,7 +2004,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		else if (!strcasecmp(token, "next_state")) {
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// To end-of-statement
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= DFFIN;
 		}
 		else if (!strcasecmp(token, "clocked_on")) {
@@ -2013,7 +2014,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			newcell->type |= CLK_SENSE_MASK;
 		    else if (strchr(token, '!') != NULL)
 			newcell->type |= CLK_SENSE_MASK;
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= DFFCLK;
 		}
 		else if (!strcasecmp(token, "clear")) {
@@ -2024,7 +2025,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			newcell->type |= RST_SENSE_MASK;
 		    else if (strchr(token, '!') != NULL)
 			newcell->type |= RST_SENSE_MASK;
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= DFFRST;
 		}
 		else if (!strcasecmp(token, "preset")) {
@@ -2035,7 +2036,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			newcell->type |= SET_SENSE_MASK;
 		    else if (strchr(token, '!') != NULL)
 			newcell->type |= SET_SENSE_MASK;
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= DFFSET;
 		}
 		else
@@ -2051,7 +2052,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		else if (!strcasecmp(token, "data_in")) {
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// To end-of-statement
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= LATCHIN;
 		}
 		else if (!strcasecmp(token, "enable")) {
@@ -2061,7 +2062,7 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			newcell->type |= EN_SENSE_MASK;
 		    else if (strchr(token, '!') != NULL)
 			newcell->type |= EN_SENSE_MASK;
-		    newpin = parse_pin(newcell, token);
+		    newpin = parse_pin(newcell, token, SENSE_NONE);
 		    newpin->type |= LATCHEN;
 		}
 		else
@@ -2135,6 +2136,8 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		    token = advancetoken(flib, 0);	// Find start of block
 		    if (strcmp(token, "{"))
 			fprintf(stderr, "Error: failed to find start of block\n");
+		    testpin = NULL;
+		    sense_type = SENSE_NONE;
 		    section = TIMING;
 		}
 		else {
@@ -2164,17 +2167,29 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// Read to end of statement
 		    // Create the related pin if needed
-		    testpin = parse_pin(newcell, token);
+		    testpin = parse_pin(newcell, token, sense_type);
 		}
 		else if (!strcasecmp(token, "timing_sense")) {
 		    token = advancetoken(flib, 0);	// Colon
 		    token = advancetoken(flib, ';');	// Read to end of statement
-		    if (!strcasecmp(token, "positive_unate"))
-			testpin->sense = SENSE_POSITIVE;
-		    else if (!strcasecmp(token, "negative_unate"))
-			testpin->sense = SENSE_NEGATIVE;
-		    else if (!strcasecmp(token, "non_unate"))
-			testpin->sense = SENSE_NONE;
+		    if (!strcasecmp(token, "positive_unate")) {
+			if (testpin)
+			   testpin->sense = SENSE_POSITIVE;
+			else
+			   sense_type = SENSE_POSITIVE;
+		    }
+		    else if (!strcasecmp(token, "negative_unate")) {
+			if (testpin)
+			   testpin->sense = SENSE_NEGATIVE;
+			else
+			   sense_type = SENSE_NEGATIVE;
+		    }
+		    else if (!strcasecmp(token, "non_unate")) {
+			if (testpin)
+			   testpin->sense = SENSE_NONE;
+			else
+			   sense_type = SENSE_NONE;
+		    }
 		}
 		else if (!strcasecmp(token, "timing_type")) {
 		    token = advancetoken(flib, 0);	// Colon
