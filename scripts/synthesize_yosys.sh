@@ -200,6 +200,14 @@ if ( ${?tielo} && ${?tielopin_out} ) then
    endif
 endif
 
+# Output buffering, if not specifically prevented (needs fixing!)
+# if (!($?nobuffers)) then
+#    cat >> ${rootname}.ys << EOF
+# Output buffering
+# iopadmap -outpad ${bufcell} ${bufpin_in}:${bufpin_out} -widthparam 1
+# EOF
+# endif
+
 cat >> ${rootname}.ys << EOF
 # Cleanup
 opt

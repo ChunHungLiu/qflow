@@ -110,6 +110,12 @@ foreach signal $outputs {
    puts $onet " .gate ${bufcell} ${bufpin_in}=${signal}_RAW ${bufpin_out}=${signal}"
 }
 
+# Reorder the outputs in decreasing order, such that outputs that are substrings
+# of other outputs come after those outputs.  That way it will always match to
+# the longest matching output name.
+
+set outputs [lsort -decreasing $outputs]
+
 while {1} {
 
    # All references to any signal in the output list have "_RAW" appended to the name
