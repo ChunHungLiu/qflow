@@ -200,13 +200,15 @@ if ( ${?tielo} && ${?tielopin_out} ) then
    endif
 endif
 
-# Output buffering, if not specifically prevented (needs fixing!)
-# if (!($?nobuffers)) then
-#    cat >> ${rootname}.ys << EOF
+# Output buffering, if not specifically prevented
+if ( ${major} > 0 || ${minor} > 1 ) then
+   if (!($?nobuffers)) then
+       cat >> ${rootname}.ys << EOF
 # Output buffering
-# iopadmap -outpad ${bufcell} ${bufpin_in}:${bufpin_out} -widthparam 1
-# EOF
-# endif
+iopadmap -outpad ${bufcell} ${bufpin_in}:${bufpin_out} -bits
+EOF
+   endif
+endif
 
 cat >> ${rootname}.ys << EOF
 # Cleanup
@@ -266,17 +268,22 @@ echo "Cleaning up output syntax" |& tee -a ${synthlog}
 ${scriptdir}/ypostproc.tcl ${rootname}_mapped.blif ${rootname} \
 	${techdir}/${techname}.sh
 
-#---------------------------------------------------------------------
-# Add buffers in front of all outputs
-#---------------------------------------------------------------------
+#----------------------------------------------------------------------
+# Add buffers in front of all outputs (for yosys versions before 0.2.0)
+#----------------------------------------------------------------------
 
-if ($?nobuffers) then
-   set final_blif = "${rootname}_mapped_tmp.blif"
+if ( ${major} == 0 && ${minor} < 2 ) then
+   if ($?nobuffers) then
+      set final_blif = "${rootname}_mapped_tmp.blif"
+   else
+      echo "Adding output buffers"
+      ${scriptdir}/ybuffer.tcl ${rootname}_mapped_tmp.blif \
+		${rootname}_mapped_buf.blif ${techdir}/${techname}.sh
+      set final_blif = "${rootname}_mapped_buf.blif"
+   endif
 else
-   echo "Adding output buffers"
-   ${scriptdir}/ybuffer.tcl ${rootname}_mapped_tmp.blif \
-	${rootname}_mapped_buf.blif ${techdir}/${techname}.sh
-   set final_blif = "${rootname}_mapped_buf.blif"
+   # Buffers already handled within yosys
+   set final_blif = "${rootname}_mapped_tmp.blif"
 endif
 
 #---------------------------------------------------------------------
