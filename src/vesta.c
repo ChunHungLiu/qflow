@@ -564,6 +564,14 @@ double *table_collapse(lutableptr tableptr, double load)
 
     vector = (double *)malloc(tableptr->size1 * sizeof(double));
 
+    // If the table is 1-dimensional, then just return a copy of the table.
+    if (tableptr->size2 <= 1) {
+       for (i = 0; i < tableptr->size1; i++) {
+	  *(vector + i) = *(tableptr->values + i);
+       }
+       return vector;
+    }
+
     // Find cap load index entries bounding  "load", or the two nearest
     // entries, if extrapolating
 
@@ -659,6 +667,15 @@ double binomial_get_value(lutableptr tableptr, double rtrans, double ctrans)
 
     rfrac = (rtrans - tableptr->idx1.rel[i - 1]) /
 		(tableptr->idx1.rel[i] - tableptr->idx1.rel[i - 1]);
+
+    // 1-dimensional computation, if this table is 1-dimensional
+
+    if (tableptr->size2 == 0) {
+	vlow = *(tableptr->values + (i - 1));
+	vhigh = *(tableptr->values + i);
+	value = vlow + (vhigh - vlow) * rfrac;
+	return value;
+    }
 
     // Find cons index entries bounding  "ctrans", or the two nearest
     // entries, if extrapolating
@@ -1661,15 +1678,19 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			exit(1);
 		    }
 		}
-		else if (!strcasecmp(token, "lu_table_template")) {
+		else if (!strcasecmp(token, "lu_table_template") ||
+			 !strcasecmp(token, "power_lut_template")) {
 		    // Read in template information;
 		    newtable = (lutable *)malloc(sizeof(lutable));
+		    newtable->name = NULL;
+		    newtable->invert = 0;
 		    newtable->var1 = UNKNOWN;
 		    newtable->var2 = UNKNOWN;
 		    newtable->size1 = 0;
 		    newtable->size2 = 0;
 		    newtable->idx1.times = NULL;
 		    newtable->idx2.caps = NULL;
+		    newtable->values = NULL;
 		    newtable->next = *tablelist;
 		    *tablelist = newtable;
 
@@ -2410,13 +2431,15 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 			    // Parse the string of values and enter it into the
 			    // table "values", which is size size2 x size1
 
-			    if (reftable && reftable->size2 > 0 && reftable->size1 > 0) {
+			    if (reftable && reftable->size1 > 0) {
+				int locsize2;
+			        locsize2 = (reftable->size2 > 0) ? reftable->size2 : 1;
 				if (reftable->invert) {
-				    tableptr->values = (double *)malloc(reftable->size2 *
+				    tableptr->values = (double *)malloc(locsize2 *
 						reftable->size1 * sizeof(double));
 				    iptr = token;
 				    for (i = 0; i < reftable->size1; i++) {
-					for (j = 0; j < reftable->size2; j++) {
+					for (j = 0; j < locsize2; j++) {
 					    while (*iptr == ' ' || *iptr == '\"' ||
 							*iptr == ',')
 						iptr++;
@@ -2430,10 +2453,10 @@ libertyRead(FILE *flib, lutable **tablelist, cell **celllist)
 				    }
 				}
 				else {
-				    tableptr->values = (double *)malloc(reftable->size2 *
+				    tableptr->values = (double *)malloc(locsize2 *
 						reftable->size1 * sizeof(double));
 				    iptr = token;
-				    for (j = 0; j < reftable->size2; j++) {
+				    for (j = 0; j < locsize2; j++) {
 					for (i = 0; i < reftable->size1; i++) {
 					    while (*iptr == ' ' || *iptr == '\"' ||
 							*iptr == ',')
