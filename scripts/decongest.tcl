@@ -156,6 +156,8 @@ while {[gets $flef line] >= 0} {
       skip_section $flef $sitename
    } elseif [regexp {[ \t]*UNITS[ \t]*$} $line lmatch] {
       skip_section $flef UNITS
+   } elseif [regexp {[ \t]*SPACING[ \t]*$} $line lmatch] {
+      skip_section $flef SPACING
    } elseif [regexp {[ \t]*END[ \t]+LIBRARY[ \t]*$} $line lmatch] {
       break
    } elseif [regexp {^[ \t]*#} $line lmatch] {

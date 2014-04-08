@@ -1,6 +1,65 @@
+#!/usr/bin/tclsh
+#---------------------------------------------------------------------------
+# getfillcell.tcl ---
+#
+# Read the .par file and find the feedthru width
+# Read LEF file and parse for fill cells;  find the one that
+#	corresponds to the feedthru width and return its name
+#
+# NOTE:  The eventual goal is to have the .par file automatically
+# generated, in which case we really want to do this process in
+# reverse.
+#
+#---------------------------------------------------------------------------
+namespace path {::tcl::mathop ::tcl::mathfunc}
+
+if {$argc < 3} {
+   puts stdout "Usage:  getfillcell <project_name> <lef_file> <fill_cell>"
+   exit 0
+}
+
+puts stdout "Running getfillcell.tcl"
+
+set topname [file rootname [lindex $argv 0]]
+set lefname [lindex $argv 1]
+set fillcell [lindex $argv 2]
+
+set parname ${topname}.par
+
+set units 100		;# read micron units from the LEF file
+			;# and convert to centimicrons
+
+#-----------------------------------------------------------------
+# Open all files for reading and writing
+#-----------------------------------------------------------------
+
 if [catch {open $lefname r} flef] {
    puts stderr "Error: can't open file $lefname for input"
    return
+}
+
+if [catch {open $parname r} fpar] {
+   puts stderr "Error: can't open file $parname for input"
+   return
+}
+
+#-----------------------------------------------------------------
+# Read the .par file and look for "feedThruWidth".
+#-----------------------------------------------------------------
+
+puts stdout "Reading .par file ${parname}. . ."
+flush stdout
+
+set fwidth 0
+while {[gets $fpar line] >= 0} {
+   if {![regexp {[ \t]*#} $line lmatch]} {
+      if [regexp {feedThruWidth[ \t]*:[ \t]*([0-9]+)} $line lmatch fwidth] {
+	 break
+      }
+   }
+}
+if {$fwidth == 0} {
+   puts stdout "(no feedthroughs or width defined as zero)"
 }
 
 #----------------------------------------------------------------
@@ -62,15 +121,19 @@ proc parse_macro {leffile macroname} {
 puts stdout "Reading ${fillcell} macros from LEF file."
 flush stdout
 
-set fillcells {}
+puts stdout "Diagnostic:  fill cell width from .par file is $fwidth"
+set usefillcell {}
 
 while {[gets $flef line] >= 0} {
    if [regexp {[ \t]*MACRO[ \t]+(.+)[ \t]*$} $line lmatch macroname] {
       # Parse the "macro" statement
       parse_macro $flef $macroname
       if {[string first $fillcell $macroname] == 0} {
-	 # Remember this for later if it's a fill cell
-	 lappend fillcells $macroname
+	 # Check width against feedthrough width
+	 puts stdout "Diagnostic:  macro $macroname width = [subst \$${macroname}(w)]"
+	 if {[subst \$${macroname}(w)] == $fwidth} {
+	    set usefillcell $macroname
+	 }
       }
    } elseif [regexp {[ \t]*LAYER[ \t]+([^ \t]+)} $line lmatch layername] {
       skip_section $flef $layername
@@ -80,6 +143,8 @@ while {[gets $flef line] >= 0} {
       skip_section $flef $viarulename
    } elseif [regexp {[ \t]*SITE[ \t]+(.+)[ \t]*$} $line lmatch sitename] {
       skip_section $flef $sitename
+   } elseif [regexp {[ \t]*SPACING[ \t]*$} $line lmatch] {
+      skip_section $flef SPACING
    } elseif [regexp {[ \t]*UNITS[ \t]*$} $line lmatch] {
       skip_section $flef UNITS
    } elseif [regexp {[ \t]*END[ \t]+LIBRARY[ \t]*$} $line lmatch] {
@@ -111,21 +176,8 @@ while {[gets $flef line] >= 0} {
    }
 }
 
-# If the macro file doesn't define any fill cells, there's not a
-# whole lot we can do. . .
-
-if {[llength $fillcells] == 0} {
-   puts stdout "No fill cells (${fillname}) found in macro file ${lefname}!"
-   exit 1
-}
-
 close $flef
+close $fpar
 
-# Sort array of fill cells by width
-
-set fillwidths {}
-foreach macro $fillcells {
-   lappend fillwidths [list $macro [subst \$${macro}(w)]]
-}
-set fillwidths [lsort -decreasing -index 1 $fillwidths]
-
+puts stdout "fill=$usefillcell"
+puts stdout "Done with getfillcell.tcl"

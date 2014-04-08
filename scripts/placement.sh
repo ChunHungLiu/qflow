@@ -200,13 +200,28 @@ if ($makedef == 1) then
       exit 1
    endif
 
+   # Run getfillcell to determine which cell should be used for fill to
+   # match the width specified for feedthroughs in the .par file.  If
+   # nothing is returned by getfillcell, then either feedthroughs have
+   # been disabled, or else we'll try passing $fillcell directly to
+   # place2def
+
+   echo "Running getfillcell.tcl" |& tee -a ${synthlog}
+   set usefillcell = `${scriptdir}/getfillcell.tcl $rootname \
+	${techdir}/$leffile $fillcell | grep fill= | cut -d= -f2`
+
+   if ( "${usefillcell}" == "" ) then
+      set usefillcell = $fillcell
+   endif
+   echo "Using cell ${usefillcell} for fill" |& tee -a ${synthlog}
+
    # Run place2def to turn the TimberWolf output into a DEF file
 
    if ( ${?route_layers} ) then
-      ${scriptdir}/place2def.tcl $rootname $fillcell ${route_layers} \
+      ${scriptdir}/place2def.tcl $rootname $usefillcell ${route_layers} \
 		 >>& ${synthlog}
    else
-      ${scriptdir}/place2def.tcl $rootname $fillcell >>& ${synthlog}
+      ${scriptdir}/place2def.tcl $rootname $usefillcell >>& ${synthlog}
    endif
 
    #---------------------------------------------------------------------
