@@ -1,0 +1,14 @@
+Source: qflow
+Section: universe/electronics
+Priority: extra
+Maintainer: Ruben Undheim <ruben.undheim@gmail.com>
+Build-Depends: debhelper (>= 8.0.0), autotools-dev
+Standards-Version: 3.9.2
+Homepage: http://opencircuitdesign.com/qflow/
+#Vcs-Git: git://opencircuitdesign.com/qflow-1.0 
+
+Package: qflow
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, yosys, yosys-abc, qrouter, magic
+Description: An Open-Source Digital Synthesis Flow
+ A Digital Synthesis Flow using Open Source EDA Tools
