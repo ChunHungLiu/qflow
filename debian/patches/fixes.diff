@@ -1,6 +1,6 @@
 Index: qflow-1.0/Makefile
 ===================================================================
---- qflow-1.0.orig/Makefile	2014-04-13 23:47:29.225175054 +0200
+--- qflow-1.0.orig/Makefile	2014-04-14 00:31:20.525197415 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,34 +0,0 @@
 -#
@@ -39,8 +39,8 @@ Index: qflow-1.0/Makefile
 -	done
 Index: qflow-1.0/Makefile.in
 ===================================================================
---- qflow-1.0.orig/Makefile.in	2014-04-13 23:47:29.225175054 +0200
-+++ qflow-1.0/Makefile.in	2014-04-13 23:48:39.617175651 +0200
+--- qflow-1.0.orig/Makefile.in	2014-04-14 00:31:20.525197415 +0200
++++ qflow-1.0/Makefile.in	2014-04-14 00:31:32.397197515 +0200
 @@ -24,9 +24,6 @@
  	done
  
@@ -53,7 +53,7 @@ Index: qflow-1.0/Makefile.in
  	@for target in $(TARGETS); do\
 Index: qflow-1.0/scripts/Makefile
 ===================================================================
---- qflow-1.0.orig/scripts/Makefile	2014-04-13 23:47:29.241175054 +0200
+--- qflow-1.0.orig/scripts/Makefile	2014-04-14 00:31:20.541197414 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,71 +0,0 @@
 -#
@@ -129,42 +129,22 @@ Index: qflow-1.0/scripts/Makefile
 -
 Index: qflow-1.0/scripts/Makefile.in
 ===================================================================
---- qflow-1.0.orig/scripts/Makefile.in	2014-04-13 23:47:29.241175054 +0200
-+++ qflow-1.0/scripts/Makefile.in	2014-04-13 23:49:23.865176029 +0200
-@@ -47,18 +47,18 @@
- 		-e '/QFLOW_DEFAULT_PARSER/s#QFLOW_DEFAULT_PARSER#$(DEFAULTPARSER)#' \
- 		qflow.sh.in > qflow.sh
- 	
--install: $(TCL_SCRIPTS) $(SHELL_SCRIPTS) $(MAIN_SCRIPT)
--	@echo "Installing qflow scripts"
--	$(INSTALL) -d ${SCRIPTINSTALL}
--	for target in $(TCL_SCRIPTS); do \
--	   $(INSTALL) $$target ${SCRIPTINSTALL} ;\
--	done
--	for target in $(SHELL_SCRIPTS); do \
--	   $(INSTALL) $$target ${SCRIPTINSTALL} ;\
--	done
--	@echo "Installing qflow executable"
--	$(INSTALL) -d ${EXECINSTALL}
--	$(INSTALL) ${MAIN_SCRIPT} ${EXECINSTALL}
-+#install: $(TCL_SCRIPTS) $(SHELL_SCRIPTS) $(MAIN_SCRIPT)
-+#	@echo "Installing qflow scripts"
-+#	$(INSTALL) -d ${SCRIPTINSTALL}
-+#	for target in $(TCL_SCRIPTS); do \
-+#	   $(INSTALL) $$target ${SCRIPTINSTALL} ;\
-+#	done
-+#	for target in $(SHELL_SCRIPTS); do \
-+#	   $(INSTALL) $$target ${SCRIPTINSTALL} ;\
-+#	done
-+#	@echo "Installing qflow executable"
-+#	$(INSTALL) -d ${EXECINSTALL}
-+#	$(INSTALL) ${MAIN_SCRIPT} ${EXECINSTALL}
+--- qflow-1.0.orig/scripts/Makefile.in	2014-04-14 00:31:20.541197414 +0200
++++ qflow-1.0/scripts/Makefile.in	2014-04-14 00:32:44.213198125 +0200
+@@ -9,8 +9,8 @@
+ LDFLAGS = @LDFLAGS@
+ INSTALL = @INSTALL@
  
- clean:
- 	$(RM) $(MAIN_SCRIPT)
+-QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
+-QFLOW_BIN_DIR = @QFLOW_BIN_DIR@
++QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
++QFLOW_BIN_DIR = ${DESTDIR}/bin
+ 
+ DEFAULTPARSER = @QFLOW_DEFAULT_PARSER@
+ 
 Index: qflow-1.0/src/Makefile
 ===================================================================
---- qflow-1.0.orig/src/Makefile	2014-04-13 23:47:29.253175054 +0200
+--- qflow-1.0.orig/src/Makefile	2014-04-14 00:31:20.553197414 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,86 +0,0 @@
 -#
@@ -255,7 +235,7 @@ Index: qflow-1.0/src/Makefile
 -	$(CC) $(CFLAGS) $(CPPFLAGS) $(DEFS) -c $< -o $@
 Index: qflow-1.0/tech/Makefile
 ===================================================================
---- qflow-1.0.orig/tech/Makefile	2014-04-13 23:47:29.257175054 +0200
+--- qflow-1.0.orig/tech/Makefile	2014-04-14 00:31:20.561197414 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,41 +0,0 @@
 -#
@@ -301,7 +281,7 @@ Index: qflow-1.0/tech/Makefile
 -
 Index: qflow-1.0/tech/osu035/Makefile
 ===================================================================
---- qflow-1.0.orig/tech/osu035/Makefile	2014-04-13 23:47:29.257175054 +0200
+--- qflow-1.0.orig/tech/osu035/Makefile	2014-04-14 00:31:20.561197414 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,40 +0,0 @@
 -#
@@ -346,7 +326,7 @@ Index: qflow-1.0/tech/osu035/Makefile
 -
 Index: qflow-1.0/tech/osu050/Makefile
 ===================================================================
---- qflow-1.0.orig/tech/osu050/Makefile	2014-04-13 23:47:29.273175054 +0200
+--- qflow-1.0.orig/tech/osu050/Makefile	2014-04-14 00:31:20.573197414 +0200
 +++ /dev/null	1970-01-01 00:00:00.000000000 +0000
 @@ -1,40 +0,0 @@
 -#
@@ -389,3 +369,42 @@ Index: qflow-1.0/tech/osu050/Makefile
 -
 -uninstall:
 -
+Index: qflow-1.0/src/Makefile.in
+===================================================================
+--- qflow-1.0.orig/src/Makefile.in	2014-04-14 00:31:20.553197414 +0200
++++ qflow-1.0/src/Makefile.in	2014-04-14 00:33:19.029198419 +0200
+@@ -9,7 +9,7 @@
+ LDFLAGS = @LDFLAGS@
+ INSTALL = @INSTALL@
+ 
+-QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
++QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
+ QFLOW_TW_PATH = @QFLOW_TW_PATH@
+ QFLOW_QROUTER_PATH = @QFLOW_QROUTER_PATH@
+ QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
+Index: qflow-1.0/tech/osu035/Makefile.in
+===================================================================
+--- qflow-1.0.orig/tech/osu035/Makefile.in	2014-04-14 00:31:20.561197414 +0200
++++ qflow-1.0/tech/osu035/Makefile.in	2014-04-14 00:33:59.301198761 +0200
+@@ -9,7 +9,7 @@
+ LDFLAGS = @LDFLAGS@
+ INSTALL = @INSTALL@
+ 
+-QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
++QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
+ 
+ TECH_FILES = osu035.genlib osu035.super osu035.par osu035_stdcells.lef
+ TECH_FILES += osu035.sh osu035_stdcells.sp osu035.magicrc osu035.prm
+Index: qflow-1.0/tech/osu050/Makefile.in
+===================================================================
+--- qflow-1.0.orig/tech/osu050/Makefile.in	2014-04-14 00:31:20.573197414 +0200
++++ qflow-1.0/tech/osu050/Makefile.in	2014-04-14 00:34:25.725198987 +0200
+@@ -9,7 +9,7 @@
+ LDFLAGS = @LDFLAGS@
+ INSTALL = @INSTALL@
+ 
+-QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
++QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
+ 
+ TECH_FILES = osu050.genlib osu050.super osu050.par osu050_stdcells.lef
+ TECH_FILES += osu050.sh osu050_stdcells.sp osu050.magicrc osu050.prm
