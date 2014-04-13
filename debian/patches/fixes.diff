@@ -137,8 +137,8 @@ Index: qflow-1.0/scripts/Makefile.in
  
 -QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
 -QFLOW_BIN_DIR = @QFLOW_BIN_DIR@
-+QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
-+QFLOW_BIN_DIR = ${DESTDIR}/bin
++QFLOW_LIB_DIR = ${DESTDIR}/usr/share/qflow
++QFLOW_BIN_DIR = ${DESTDIR}/usr/bin
  
  DEFAULTPARSER = @QFLOW_DEFAULT_PARSER@
  
@@ -378,7 +378,7 @@ Index: qflow-1.0/src/Makefile.in
  INSTALL = @INSTALL@
  
 -QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
-+QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
++QFLOW_LIB_DIR = ${DESTDIR}/usr/share/qflow
  QFLOW_TW_PATH = @QFLOW_TW_PATH@
  QFLOW_QROUTER_PATH = @QFLOW_QROUTER_PATH@
  QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
@@ -391,7 +391,7 @@ Index: qflow-1.0/tech/osu035/Makefile.in
  INSTALL = @INSTALL@
  
 -QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
-+QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
++QFLOW_LIB_DIR = ${DESTDIR}/usr/share/qflow
  
  TECH_FILES = osu035.genlib osu035.super osu035.par osu035_stdcells.lef
  TECH_FILES += osu035.sh osu035_stdcells.sp osu035.magicrc osu035.prm
@@ -404,7 +404,7 @@ Index: qflow-1.0/tech/osu050/Makefile.in
  INSTALL = @INSTALL@
  
 -QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
-+QFLOW_LIB_DIR = ${DESTDIR}/share/qflow
++QFLOW_LIB_DIR = ${DESTDIR}/usr/share/qflow
  
  TECH_FILES = osu050.genlib osu050.super osu050.par osu050_stdcells.lef
  TECH_FILES += osu050.sh osu050_stdcells.sp osu050.magicrc osu050.prm
