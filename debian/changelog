@@ -1,3 +1,9 @@
+qflow (1.0.76-ubuntu2~trusty) trusty; urgency=low
+
+  * Added tcsh as a dependency
+
+ -- Ruben Undheim <ruben.undheim@gmail.com>  Tue, 22 Apr 2014 21:19:21 +0200
+
 qflow (1.0.76-ubuntu1~saucy) saucy; urgency=low
 
   * First ubuntu package 

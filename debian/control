@@ -9,6 +9,6 @@ Homepage: http://opencircuitdesign.com/qflow/
 
 Package: qflow
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, yosys, yosys-abc, qrouter, magic
+Depends: ${shlibs:Depends}, ${misc:Depends}, yosys, yosys-abc, qrouter, magic, tcsh
 Description: An Open-Source Digital Synthesis Flow
  A Digital Synthesis Flow using Open Source EDA Tools
