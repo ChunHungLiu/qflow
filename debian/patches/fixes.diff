@@ -401,7 +401,7 @@ Index: qflow-1.0/src/Makefile.in
  	@echo "Installing links to TimberWolf, qrouter, odin_ii, and abc"
 -	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s $(QFLOW_TW_PATH) twdir)
 -	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
-+	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s /usr/bin/twdir twdir)
++	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s /usr/share/timberwolf twdir)
 +	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s /usr/bin/qrouter qrouter)
  	@if test "${HAVE_ABC}" = "1"; then \
 -	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc); \
