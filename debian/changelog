@@ -1,3 +1,9 @@
+qflow (1.0.76-ubuntu3~trusty) trusty; urgency=low
+
+  * Added timberwolf as a dependency
+
+ -- Ruben Undheim <ruben.undheim@gmail.com>  Fri, 25 Apr 2014 22:09:49 +0200
+
 qflow (1.0.76-ubuntu2~trusty) trusty; urgency=low
 
   * Added tcsh as a dependency
