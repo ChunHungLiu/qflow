@@ -1,9 +1,9 @@
-Format: http://dep.debian.net/deps/dep5
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: qflow
 Source: http://opencircuitdesign.com/qflow/
 
 Files: *
-Copyright: 2013 Tim Edwards
+Copyright: 2013 Tim Edwards <tim@opencircuitdesign.com>
 License: GPL
  This package is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
