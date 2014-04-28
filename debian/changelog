@@ -1,3 +1,9 @@
+qflow (1.0.76-ubuntu5~trusty) trusty; urgency=low
+
+  * Added sub-tools as build dependencies also
+
+ -- Ruben Undheim <ruben.undheim@gmail.com>  Sun, 27 Apr 2014 12:32:39 +0200
+
 qflow (1.0.76-ubuntu3~trusty) trusty; urgency=low
 
   * Added timberwolf as a dependency

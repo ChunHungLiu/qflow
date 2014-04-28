@@ -2,7 +2,7 @@ Source: qflow
 Section: universe/electronics
 Priority: extra
 Maintainer: Ruben Undheim <ruben.undheim@gmail.com>
-Build-Depends: debhelper (>= 8.0.0), autotools-dev
+Build-Depends: debhelper (>= 8.0.0), autotools-dev, yosys, yosys-abc, timberwolf, qrouter, magic
 Standards-Version: 3.9.2
 Homepage: http://opencircuitdesign.com/qflow/
 #Vcs-Git: git://opencircuitdesign.com/qflow-1.0 
