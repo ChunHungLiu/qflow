@@ -264,13 +264,15 @@ while {[gets $fpin line] >= 0} {
 	 } elseif {![catch {set ${cellname}(output)}]} {
 	    if {[eval [subst {lsearch \$${cellname}(output) $pinname}]] >= 0} {
 	       dict set outputs $netname [list $instance $pinname]
-	    } elseif {[eval [subst {lsearch \$${cellname}(input) $pinname}]] >= 0} {
-	       set ilist [list $pinname $px $py -1 {}]
-	       if [catch {set inst [dict get $nets $netname]}] {
-	          set inst [dict create]
-	          dict set nets $netname $inst
+	    } elseif {![catch {set ${cellname}(input)}]} {
+	       if {[eval [subst {lsearch \$${cellname}(input) $pinname}]] >= 0} {
+	          set ilist [list $pinname $px $py -1 {}]
+	          if [catch {set inst [dict get $nets $netname]}] {
+	             set inst [dict create]
+	             dict set nets $netname $inst
+	          }
+	          dict set nets $netname $instance $ilist
 	       }
-	       dict set nets $netname $instance $ilist
 	    }
 	 }
       }
