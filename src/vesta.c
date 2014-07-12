@@ -2656,6 +2656,17 @@ verilogRead(FILE *fsrc, cell *cells, net **netlist, instance **instlist,
 		    newinst->out_connects = NULL;
 		}
 		else {
+		    /* Ignore all wire and assign statements	*/
+		    /* Qflow does not generate these, but other	*/
+		    /* synthesis tools may.			*/
+
+		    if (!strcasecmp(token, "assign") && (verbose > 0)) {
+			fprintf(stdout, "Wire assignments are not handled!\n");
+		    }
+		    else if (strcasecmp(token, "wire") && (verbose > 0)) {
+			fprintf(stdout, "Unknown cell \"%s\" instanced.\n",
+				token);
+		    }
 		    token = advancetoken(fsrc, ';');	// Get rest of entry, and ignore
 		}
 		break;
