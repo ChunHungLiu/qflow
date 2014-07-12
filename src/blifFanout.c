@@ -956,8 +956,15 @@ void write_output(FILE *infptr, FILE *outfptr)
 		     int slen = strlen(stren);
 		     char *repl = find_size(stren);
 
-		     if (glen != slen)
+		     if (glen != slen) {
+			// The size of the gatename increased, so reallocate
+			if (slen > glen) {
+			    gateline = (char *)realloc(gateline, strlen(gateline)
+					+ 1 + slen - glen);
+			    s = strstr(gateline, Gatename);
+			}
 			memmove(s + slen, s + glen, strlen(s + glen) + 1);
+		     }
 
 		     strncpy(s, stren, slen);
 	             Changed_count++;
