@@ -3224,7 +3224,7 @@ main(int objc, char *argv[])
 	    fprintf(stdout, "Design meets timing requirements.\n");
 	}
     }
-    else {
+    else if (orderedpaths[0] != NULL) {
 	fprintf(stdout, "Computed maximum clock frequency (zero slack) = %g MHz\n",
 		(1.0E6 / orderedpaths[0]->delay));
     }
