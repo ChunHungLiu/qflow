@@ -82,8 +82,13 @@ set yerrcnt = 2
 
 while ($yerrcnt > 1)
 
+# Note:  While the use of read_liberty to allow structural verilog only
+# works in yosys 0.3.1 and newer, the following line works for the
+# purpose of querying the hierarchy in all versions.
+
 cat > ${rootname}.ys << EOF
 # Synthesis script for yosys created by qflow
+read_liberty -lib -ignore_miss_dir -setattr blackbox ${techdir}/${libertyfile}
 read_verilog ${rootname}.v
 EOF
 
@@ -138,6 +143,19 @@ set revision = `echo $versionstring | cut -d. -f2`
       
 cat > ${rootname}.ys << EOF
 # Synthesis script for yosys created by qflow
+EOF
+
+# From yosys version 3.0.1, structural verilog using cells from the
+# the same standard cell set that is mapped by abc is supported.
+if (( ${major} == 0 && ${minor} == 3 && ${revision} >= 1 ) || \
+    ( ${major} == 0 && ${minor} > 3 ) || \
+    ( ${major} > 0) ) then
+cat > ${rootname}.ys << EOF
+read_liberty -lib -ignore_miss_dir -setattr blackbox ${techdir}/${libertyfile}
+EOF
+endif
+
+cat > ${rootname}.ys << EOF
 read_verilog ${rootname}.v
 EOF
 
