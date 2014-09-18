@@ -139,15 +139,20 @@ set blif_opts = "${blif_opts} -buf ${bufcell} ${bufpin_in} ${bufpin_out}"
 set versionstring = `${bindir}/yosys -V | cut -d' ' -f2`
 set major = `echo $versionstring | cut -d. -f1`
 set minor = `echo $versionstring | cut -d. -f2`
-set revision = `echo $versionstring | cut -d. -f2`
+set revisionstring = `echo $versionstring | cut -d. -f3`
+if ( ${revisionstring} == "" ) set revisionstring = 0
+set revision = `echo $revisionstring | cut -d+ -f1`
+set subrevision = `echo $revisionstring | cut -d+ -f2`
+if ( ${subrevision} == "" ) set subrevision = 0
       
 cat > ${rootname}.ys << EOF
 # Synthesis script for yosys created by qflow
 EOF
 
-# From yosys version 3.0.1, structural verilog using cells from the
+# From yosys version 3.0.0+514, structural verilog using cells from the
 # the same standard cell set that is mapped by abc is supported.
-if (( ${major} == 0 && ${minor} == 3 && ${revision} >= 1 ) || \
+if (( ${major} == 0 && ${minor} == 3 && ${revision} == 0 && ${subrevision} >= 514) || \
+    ( ${major} == 0 && ${minor} == 3 && ${revision} > 0 ) || \
     ( ${major} == 0 && ${minor} > 3 ) || \
     ( ${major} > 0) ) then
 cat > ${rootname}.ys << EOF
