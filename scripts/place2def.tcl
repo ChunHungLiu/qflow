@@ -105,7 +105,7 @@ if [catch {open $infoname r} finf] {
       # Versions of qrouter since 1.2.3 provide version information, including
       # whether or not qrouter was compiled with Tcl/Tk and supports scripting
 
-      if {![regexp {qrouter ([1-9]+)\.([1-9]+)\.([1-9]+)(.*)} $line lmatch \
+      if {![regexp {qrouter ([0-9]+)\.([0-9]+)\.([0-9]+)(.*)} $line lmatch \
 		major minor subv rest]} {
 
          # Older versions of qrouter assumed a track offset of 1/2 track pitch.
