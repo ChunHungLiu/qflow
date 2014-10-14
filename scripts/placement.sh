@@ -131,14 +131,11 @@ else
 endif
 
 #-----------------------------------------------
-# 1) Run TimberWolf
+# 1) Run graywolf
 #-----------------------------------------------
 
-echo "Running TimberWolf placement" |& tee -a ${synthlog}
-( pushd ${bindir}/twdir > /dev/null ;\
-  source .twrc >>& ${synthlog} ;\
-  popd > /dev/null ;\
-  TimberWolf $rootname >>& ${synthlog} )
+echo "Running graywolf placement" |& tee -a ${synthlog}
+${bindir}/graywolf $rootname >>& ${synthlog}
 
 #---------------------------------------------------------------------
 # Spot check:  Did TimberWolf produce file ${rootname}.pin?

@@ -10,7 +10,7 @@ LDFLAGS = @LDFLAGS@
 INSTALL = @INSTALL@
 
 QFLOW_LIB_DIR = @QFLOW_LIB_DIR@
-QFLOW_TW_PATH = @QFLOW_TW_PATH@
+QFLOW_GRAYWOLF_PATH = @QFLOW_GRAYWOLF_PATH@
 QFLOW_QROUTER_PATH = @QFLOW_QROUTER_PATH@
 QFLOW_ABC_PATH = @QFLOW_ABC_PATH@
 QFLOW_ODIN_PATH = @QFLOW_ODIN_PATH@
@@ -57,8 +57,8 @@ install: $(TARGETS)
 	@for target in $(TARGETS); do \
 	   $(INSTALL) $$target ${BININSTALL} ;\
 	done
-	@echo "Installing links to TimberWolf, qrouter, odin_ii, and abc"
-	(cd ${BININSTALL};  $(RM) -f twdir;  ln -s $(QFLOW_TW_PATH) twdir)
+	@echo "Installing links to graywolf, qrouter, odin_ii, and abc"
+	(cd ${BININSTALL};  $(RM) -f graywolf;  ln -s $(QFLOW_GRAYWOLF_PATH) graywolf)
 	(cd ${BININSTALL};  $(RM) -f qrouter;  ln -s $(QFLOW_QROUTER_PATH) qrouter)
 	@if test "${HAVE_ABC}" = "1"; then \
 	(cd ${BININSTALL};  $(RM) -f abc;  ln -s $(QFLOW_ABC_PATH) abc); \
